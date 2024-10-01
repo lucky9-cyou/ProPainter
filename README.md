@@ -122,8 +122,22 @@
    conda create -n propainter python=3.8 -y
    conda activate propainter
 
+   # install pytorch
+   conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
+
+   # intall tensortrt for cuda 11.8
+   wget https://developer.nvidia.com/downloads/compute/machine-learning/tensorrt/10.5.0/local_repo/nv-tensorrt-local-repo-ubuntu2204-10.5.0-cuda-11.8_1.0-1_amd64.deb
+   dpkg -i nv-tensorrt-local-repo-ubuntu2204-10.5.0-cuda-11.8_1.0-1_amd64.deb
+   sudo cp /var/nv-tensorrt-local-repo-ubuntu2204-10.5.0-cuda-11.8/nv-tensorrt-local-EE22FB8A-keyring.gpg /usr/share/keyrings/
+   sudo apt update
+   sudo apt install tensorrt
+   python3 -m pip install --upgrade tensorrt-cu11
+
    # install python dependencies
    pip3 install -r requirements.txt
+
+   # install web dependences
+   pip install -r web-demos/hugging_face/requirements.txt
    ```
 
    - CUDA >= 9.2
