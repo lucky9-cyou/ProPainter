@@ -15,3 +15,5 @@ openmim
 tqdm
 psutil
 omegaconf
+gradio_client
+wget

@@ -54,4 +54,13 @@ cd web-demos/hugging_face/
 python3 app.py
 ```
 
-The Gradio application will be available at `http://127.0.0.1:7860/` by VSCode port forwarding.
+The Gradio application will be available at 'http://127.0.0.1:7860/' by VSCode port forwarding or 'http://101.126.90.71:50183'.
+
+= Task 2: Invoke the Gradio Application
+
+You can use `client.py` to invoke the Gradio application. The following is an example of how to use the client to invoke the Gradio application:
+```bash
+python client.py --video inputs/sample/sample.mp4 --pose weights/vitpose.pt
+```
+
+The inpainted video will be saved to `outputs/sample.mp4`. If you want to change the output path, you can use the `--output` option.
