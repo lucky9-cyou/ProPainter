@@ -70,33 +70,23 @@ def get_frames_from_video(video_input, video_state):
         fps = cap.get(cv2.CAP_PROP_FPS)
         length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-        if length >= 500:
-            operation_log = [("You uploaded a video with more than 500 frames. Stop the video extraction. Kindly lower the video frame rate to a value below 500. We highly recommend deploying the demo locally for long video processing.", "Error")]
+        while cap.isOpened():
             ret, frame = cap.read()
             if ret == True:
+                # resize input image
                 original_h, original_w = frame.shape[:2]
-                scale_factor = min(1, 1280/max(original_h, original_w))
-                target_h, target_w = int(original_h*scale_factor), int(original_w*scale_factor)
+                scale_factor = min(1, 640 / max(original_h, original_w))
+                target_h, target_w = int(original_h * scale_factor), int(original_w * scale_factor)
+                if scale_factor != 1:
+                    frame = cv2.resize(frame, (target_w, target_h))
                 frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-            status_ok = False
-        else:
-            while cap.isOpened():
-                ret, frame = cap.read()
-                if ret == True:
-                    # resize input image
-                    original_h, original_w = frame.shape[:2]
-                    scale_factor = min(1, 1280/max(original_h, original_w))
-                    target_h, target_w = int(original_h*scale_factor), int(original_w*scale_factor)
-                    if scale_factor != 1:
-                        frame = cv2.resize(frame, (target_w, target_h))
-                    frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-                else:
-                    break
-            t = len(frames)
-            if t > 0:
-                print(f'Inp video shape: t_{t}, s_{original_h}x{original_w} to s_{target_h}x{target_w}')
             else:
-                print(f'Inp video shape: t_{t}, no input video!!!')
+                break
+        t = len(frames)
+        if t > 0:
+            print(f'Inp video shape: t_{t}, s_{original_h}x{original_w} to s_{target_h}x{target_w}')
+        else:
+            print(f'Inp video shape: t_{t}, no input video!!!')
     except (OSError, TypeError, ValueError, KeyError, SyntaxError) as e:
         status_ok = False
         print("read_frame_source:{} error. {}\n".format(video_path, str(e)))
@@ -115,7 +105,7 @@ def get_frames_from_video(video_input, video_state):
         "select_frame_number": 0,
         "fps": fps
         }
-    video_info = "Video Name: {},\nFPS: {},\nTotal Frames: {},\nImage Size:{}".format(video_state["video_name"], round(video_state["fps"], 0), length, (original_w, original_h))
+    video_info = "Video Name: {},\nFPS: {},\nTotal Frames: {},\nImage Size:{},\nTarget Image Size:{}".format(video_state["video_name"], round(video_state["fps"], 0), length, (original_w, original_h), (target_w, target_h))
     model.samcontroler.sam_controler.reset_image() 
     model.samcontroler.sam_controler.set_image(video_state["origin_images"][0])
     return video_state, video_info, video_state["origin_images"][0], gr.update(visible=status_ok, maximum=len(frames), value=1), gr.update(visible=status_ok, maximum=len(frames), value=len(frames)), \
@@ -303,7 +293,7 @@ def inpaint_video(video_state, resize_ratio_number, dilate_radius_number, raft_i
         if i in inpaint_mask_numbers:
             continue
         inpaint_masks[inpaint_masks==i] = 0
-    
+        
     # inpaint for videos
     inpainted_frames = model.baseinpainter.inpaint(frames, 
                                                    inpaint_masks, 
@@ -329,6 +319,7 @@ def generate_video_from_frames(frames, output_path, fps=30):
         fps (int, optional): The frame rate of the output video. Defaults to 30.
     """
     frames = torch.from_numpy(np.asarray(frames))
+
     if not os.path.exists(os.path.dirname(output_path)):
         os.makedirs(os.path.dirname(output_path))
     torchvision.io.write_video(output_path, frames, fps=fps, video_codec="libx264")
@@ -470,7 +461,7 @@ with gr.Blocks(theme=gr.themes.Monochrome()) as iface:
             with gr.Column(scale=2):
                 template_frame = gr.Image(type="pil", interactive=False, elem_id="template_frame", visible=False, elem_classes="image")
                 image_selection_slider = gr.Slider(minimum=1, maximum=100, step=1, value=1, label="Track start frame", visible=False)
-                track_pause_number_slider = gr.Slider(minimum=1, maximum=100, step=1, value=1, label="Track end frame", visible=False)
+                track_pause_number_slider = gr.Slider(minimum=1, maximum=2000, step=1, value=1, label="Track end frame", visible=False)
             with gr.Column(scale=2, elem_classes="jc_center"):
                 run_status2 = gr.HighlightedText(value=[("",""), ("Try to upload your video and click the Get video info button to get started!", "Normal")],
                                                 color_map={"Normal": "green", "Error": "red", "Clear clicks": "gray", "Add mask": "green", "Remove mask": "red"})
@@ -478,7 +469,7 @@ with gr.Blocks(theme=gr.themes.Monochrome()) as iface:
                     with gr.Column(scale=2, elem_classes="mask_button_group"):
                         clear_button_click = gr.Button(value="Clear clicks", interactive=True, visible=False)
                         remove_mask_button = gr.Button(value="Remove mask", interactive=True, visible=False, elem_classes="remove_button")
-                        Add_mask_button = gr.Button(value="Add mask", interactive=True, visible=False, elem_classes="add_button")
+                        add_mask_button = gr.Button(value="Add mask", interactive=True, visible=False, elem_classes="add_button")
                     point_prompt = gr.Radio(
                         choices=["Positive", "Negative"],
                         value="Positive",
@@ -506,7 +497,7 @@ with gr.Blocks(theme=gr.themes.Monochrome()) as iface:
             video_input, video_state
         ],
         outputs=[video_state, video_info, template_frame,
-                 image_selection_slider, track_pause_number_slider, point_prompt, clear_button_click, Add_mask_button, template_frame,
+                 image_selection_slider, track_pause_number_slider, point_prompt, clear_button_click, add_mask_button, template_frame,
                  tracking_video_predict_button, tracking_video_output, inpaiting_video_output, remove_mask_button, inpaint_video_predict_button, step2_title, step3_title,mask_dropdown, run_status, run_status2]
     )
 
@@ -526,7 +517,7 @@ with gr.Blocks(theme=gr.themes.Monochrome()) as iface:
     )
 
     # add different mask
-    Add_mask_button.click(
+    add_mask_button.click(
         fn=add_multi_mask,
         inputs=[video_state, interactive_state, mask_dropdown],
         outputs=[interactive_state, mask_dropdown, template_frame, click_state, run_status, run_status2]
@@ -570,7 +561,7 @@ with gr.Blocks(theme=gr.themes.Monochrome()) as iface:
             tracking_video_output, inpaiting_video_output,
             template_frame,
             tracking_video_predict_button, image_selection_slider , track_pause_number_slider,point_prompt, clear_button_click, 
-            Add_mask_button, template_frame, tracking_video_predict_button, tracking_video_output, inpaiting_video_output, remove_mask_button,inpaint_video_predict_button, step2_title, step3_title, mask_dropdown, video_info, run_status, run_status2
+            add_mask_button, template_frame, tracking_video_predict_button, tracking_video_output, inpaiting_video_output, remove_mask_button,inpaint_video_predict_button, step2_title, step3_title, mask_dropdown, video_info, run_status, run_status2
         ],
         queue=False,
         show_progress=False)
@@ -585,7 +576,7 @@ with gr.Blocks(theme=gr.themes.Monochrome()) as iface:
             tracking_video_output, inpaiting_video_output,
             template_frame,
             tracking_video_predict_button, image_selection_slider , track_pause_number_slider,point_prompt, clear_button_click, 
-            Add_mask_button, template_frame, tracking_video_predict_button, tracking_video_output, inpaiting_video_output, remove_mask_button,inpaint_video_predict_button, step2_title, step3_title, mask_dropdown, video_info, run_status, run_status2
+            add_mask_button, template_frame, tracking_video_predict_button, tracking_video_output, inpaiting_video_output, remove_mask_button,inpaint_video_predict_button, step2_title, step3_title, mask_dropdown, video_info, run_status, run_status2
         ],
         queue=False,
         show_progress=False)
@@ -597,4 +588,4 @@ with gr.Blocks(theme=gr.themes.Monochrome()) as iface:
         outputs = [template_frame,click_state, run_status, run_status2],
     )
 
-iface.launch(debug=True)
+iface.launch(debug=True, server_name="0.0.0.0", server_port=6006)
