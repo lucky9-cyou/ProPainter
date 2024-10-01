@@ -63,46 +63,69 @@ def get_frames_from_video(video_input, video_state):
     video_path = video_input
     frames = []
     user_name = time.time()
+    status_ok = True
     operation_log = [("[Must Do]", "Click image"), (": Video uploaded! Try to click the image shown in step2 to add masks.\n", None)]
     try:
         cap = cv2.VideoCapture(video_path)
         fps = cap.get(cv2.CAP_PROP_FPS)
-        while cap.isOpened():
+        length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        if length >= 500:
+            operation_log = [("You uploaded a video with more than 500 frames. Stop the video extraction. Kindly lower the video frame rate to a value below 500. We highly recommend deploying the demo locally for long video processing.", "Error")]
             ret, frame = cap.read()
             if ret == True:
-                current_memory_usage = psutil.virtual_memory().percent
+                original_h, original_w = frame.shape[:2]
+                scale_factor = min(1, 1280/max(original_h, original_w))
+                target_h, target_w = int(original_h*scale_factor), int(original_w*scale_factor)
                 frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-                if current_memory_usage > 90:
-                    operation_log = [("Memory usage is too high (>90%). Stop the video extraction. Please reduce the video resolution or frame rate.", "Error")]
-                    print("Memory usage is too high (>90%). Please reduce the video resolution or frame rate.")
+            status_ok = False
+        else:
+            while cap.isOpened():
+                ret, frame = cap.read()
+                if ret == True:
+                    # resize input image
+                    original_h, original_w = frame.shape[:2]
+                    scale_factor = min(1, 1280/max(original_h, original_w))
+                    target_h, target_w = int(original_h*scale_factor), int(original_w*scale_factor)
+                    if scale_factor != 1:
+                        frame = cv2.resize(frame, (target_w, target_h))
+                    frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                else:
                     break
+            t = len(frames)
+            if t > 0:
+                print(f'Inp video shape: t_{t}, s_{original_h}x{original_w} to s_{target_h}x{target_w}')
             else:
-                break
+                print(f'Inp video shape: t_{t}, no input video!!!')
     except (OSError, TypeError, ValueError, KeyError, SyntaxError) as e:
+        status_ok = False
         print("read_frame_source:{} error. {}\n".format(video_path, str(e)))
-    image_size = (frames[0].shape[0],frames[0].shape[1]) 
+    
     # initialize video_state
+    if frames[0].shape[0] > 720 or frames[0].shape[1] > 720:
+         operation_log = [(f"Video uploaded! Try to click the image shown in step2 to add masks. (You uploaded a video with a size of {original_w}x{original_h}, and the length of its longest edge exceeds 720 pixels. We may resize the input video during processing.)", "Normal")]
+
     video_state = {
         "user_name": user_name,
         "video_name": os.path.split(video_path)[-1],
         "origin_images": frames,
         "painted_images": frames.copy(),
-        "masks": [np.zeros((frames[0].shape[0],frames[0].shape[1]), np.uint8)]*len(frames),
+        "masks": [np.zeros((target_h, target_w), np.uint8)]*len(frames),
         "logits": [None]*len(frames),
         "select_frame_number": 0,
         "fps": fps
         }
-    video_info = "Video Name: {},\nFPS: {},\nTotal Frames: {},\nImage Size:{}".format(video_state["video_name"], round(video_state["fps"], 0), len(frames), image_size)
+    video_info = "Video Name: {},\nFPS: {},\nTotal Frames: {},\nImage Size:{}".format(video_state["video_name"], round(video_state["fps"], 0), length, (original_w, original_h))
     model.samcontroler.sam_controler.reset_image() 
     model.samcontroler.sam_controler.set_image(video_state["origin_images"][0])
-    return video_state, video_info, video_state["origin_images"][0], gr.update(visible=True, maximum=len(frames), value=1), gr.update(visible=True, maximum=len(frames), value=len(frames)), \
-                        gr.update(visible=True), gr.update(visible=True), \
-                        gr.update(visible=True), gr.update(visible=True),\
-                        gr.update(visible=True), gr.update(visible=True), \
-                        gr.update(visible=True), gr.update(visible=True), \
-                        gr.update(visible=True), gr.update(visible=True), \
-                        gr.update(visible=True), gr.update(visible=True, choices=[], value=[]), \
-                        gr.update(visible=True, value=operation_log), gr.update(visible=True, value=operation_log)
+    return video_state, video_info, video_state["origin_images"][0], gr.update(visible=status_ok, maximum=len(frames), value=1), gr.update(visible=status_ok, maximum=len(frames), value=len(frames)), \
+                        gr.update(visible=status_ok), gr.update(visible=status_ok), \
+                        gr.update(visible=status_ok), gr.update(visible=status_ok),\
+                        gr.update(visible=status_ok), gr.update(visible=status_ok), \
+                        gr.update(visible=status_ok), gr.update(visible=status_ok), \
+                        gr.update(visible=status_ok), gr.update(visible=status_ok), \
+                        gr.update(visible=status_ok), gr.update(visible=status_ok, choices=[], value=[]), \
+                        gr.update(visible=True, value=operation_log), gr.update(visible=status_ok, value=operation_log)
 
 # get the select frame from gradio slider
 def select_template(image_selection_slider, video_state, interactive_state, mask_dropdown):
@@ -135,6 +158,7 @@ def sam_refine(video_state, point_prompt, click_state, interactive_state, evt:gr
         point_prompt: flag for positive or negative button click
         click_state: [[points], [labels]]
     """
+    
     if point_prompt == "Positive":
         coordinate = "[[{},{},1]]".format(evt.index[0], evt.index[1])
         interactive_state["positive_click_times"] += 1
@@ -342,81 +366,23 @@ def restart():
 
 # args, defined in track_anything.py
 args = parse_augment()
-pretrain_model_url = 'https://github.com/sczhou/ProPainter/releases/download/v0.1.0/'
 sam_checkpoint_url_dict = {
-    'vit_h': "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth",
-    'vit_l': "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth",
-    'vit_b': "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth"
+    'vit_h': "sam_vit_h_4b8939.pth",
+    'vit_l': "sam_vit_l_0b3195.pth",
+    'vit_b': "sam_vit_b_01ec64.pth"
 }
 checkpoint_fodler = os.path.join('..', '..', 'weights')
 
-sam_checkpoint = load_file_from_url(sam_checkpoint_url_dict[args.sam_model_type], checkpoint_fodler)
-cutie_checkpoint = load_file_from_url(os.path.join(pretrain_model_url, 'cutie-base-mega.pth'), checkpoint_fodler)
-propainter_checkpoint = load_file_from_url(os.path.join(pretrain_model_url, 'ProPainter.pth'), checkpoint_fodler)
-raft_checkpoint = load_file_from_url(os.path.join(pretrain_model_url, 'raft-things.pth'), checkpoint_fodler)
-flow_completion_checkpoint = load_file_from_url(os.path.join(pretrain_model_url, 'recurrent_flow_completion.pth'), checkpoint_fodler)
+sam_checkpoint = checkpoint_fodler + '/' + sam_checkpoint_url_dict[args.sam_model_type]
+cutie_checkpoint = checkpoint_fodler + '/cutie-base-mega.pth'
+propainter_checkpoint = checkpoint_fodler + '/ProPainter.pth'
+raft_checkpoint = checkpoint_fodler + '/raft-things.pth'
+flow_completion_checkpoint = checkpoint_fodler + '/recurrent_flow_completion.pth'
 
 # initialize sam, cutie, propainter models
 model = TrackingAnything(sam_checkpoint, cutie_checkpoint, propainter_checkpoint, raft_checkpoint, flow_completion_checkpoint, args)
 
-
-title = r"""<h1 align="center">ProPainter: Improving Propagation and Transformer for Video Inpainting</h1>"""
-
-description = r"""
-<center><img src='https://github.com/sczhou/ProPainter/raw/main/assets/propainter_logo1_glow.png' alt='Propainter logo' style="width:180px; margin-bottom:20px"></center>
-<b>Official Gradio demo</b> for <a href='https://github.com/sczhou/ProPainter' target='_blank'><b>Improving Propagation and Transformer for Video Inpainting (ICCV 2023)</b></a>.<br>
-🔥 Propainter is a robust inpainting algorithm.<br>
-🤗 Try to drop your video, add the masks and get the the inpainting results!<br>
-"""
-article = r"""
-If ProPainter is helpful, please help to ⭐ the <a href='https://github.com/sczhou/ProPainter' target='_blank'>Github Repo</a>. Thanks! 
-[![GitHub Stars](https://img.shields.io/github/stars/sczhou/ProPainter?style=social)](https://github.com/sczhou/ProPainter)
-
----
-
-📝 **Citation**
-<br>
-If our work is useful for your research, please consider citing:
-```bibtex
-@inproceedings{zhou2023propainter,
-   title={{ProPainter}: Improving Propagation and Transformer for Video Inpainting},
-   author={Zhou, Shangchen and Li, Chongyi and Chan, Kelvin C.K and Loy, Chen Change},
-   booktitle={Proceedings of IEEE International Conference on Computer Vision (ICCV)},
-   year={2023}
-}
-```
-
-📋 **License**
-<br>
-This project is licensed under <a rel="license" href="https://github.com/sczhou/CodeFormer/blob/master/LICENSE">S-Lab License 1.0</a>. 
-Redistribution and use for non-commercial purposes should follow this license.
-
-📧 **Contact**
-<br>
-If you have any questions, please feel free to reach me out at <b>shangchenzhou@gmail.com</b>.
-<div>
-    🤗 Find Me:
-    <a href="https://twitter.com/ShangchenZhou"><img style="margin-top:0.5em; margin-bottom:0.5em" src="https://img.shields.io/twitter/follow/ShangchenZhou?label=%40ShangchenZhou&style=social" alt="Twitter Follow"></a> 
-    <a href="https://github.com/sczhou"><img style="margin-top:0.5em; margin-bottom:2em" src="https://img.shields.io/github/followers/sczhou?style=social" alt="Github Follow"></a>
-</div>
-
-"""
-css = """
-.gradio-container {width: 85% !important}
-.gr-monochrome-group {border-radius: 5px !important; border: revert-layer !important; border-width: 2px !important; color: black !important}
-button {border-radius: 8px !important;}
-.add_button {background-color: #4CAF50 !important;}
-.remove_button {background-color: #f44336 !important;}
-.mask_button_group {gap: 10px !important;}
-.video {height: 300px !important;}
-.image {height: 300px !important;}
-.video .wrap.svelte-lcpz3o {display: flex !important; align-items: center !important; justify-content: center !important;}
-.video .wrap.svelte-lcpz3o > :first-child {height: 100% !important;}
-.margin_center {width: 50% !important; margin: auto !important;}
-.jc_center {justify-content: center !important;}
-"""
-
-with gr.Blocks(theme=gr.themes.Monochrome(), css=css) as iface:
+with gr.Blocks(theme=gr.themes.Monochrome()) as iface:
     click_state = gr.State([[],[]])
 
     interactive_state = gr.State({
@@ -445,9 +411,6 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=css) as iface:
         "fps": 30
         }
     )
-
-    gr.Markdown(title)
-    gr.Markdown(description)
 
     with gr.Group(elem_classes="gr-monochrome-group"):
         with gr.Row():
@@ -505,7 +468,7 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=css) as iface:
         step2_title = gr.Markdown("---\n## Step2: Add masks", visible=False)
         with gr.Row(equal_height=True):
             with gr.Column(scale=2):
-                template_frame = gr.Image(type="pil",interactive=True, elem_id="template_frame", visible=False, elem_classes="image")
+                template_frame = gr.Image(type="pil", interactive=False, elem_id="template_frame", visible=False, elem_classes="image")
                 image_selection_slider = gr.Slider(minimum=1, maximum=100, step=1, value=1, label="Track start frame", visible=False)
                 track_pause_number_slider = gr.Slider(minimum=1, maximum=100, step=1, value=1, label="Track end frame", visible=False)
             with gr.Column(scale=2, elem_classes="jc_center"):
@@ -543,9 +506,9 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=css) as iface:
             video_input, video_state
         ],
         outputs=[video_state, video_info, template_frame,
-                 image_selection_slider, track_pause_number_slider,point_prompt, clear_button_click, Add_mask_button, template_frame,
+                 image_selection_slider, track_pause_number_slider, point_prompt, clear_button_click, Add_mask_button, template_frame,
                  tracking_video_predict_button, tracking_video_output, inpaiting_video_output, remove_mask_button, inpaint_video_predict_button, step2_title, step3_title,mask_dropdown, run_status, run_status2]
-    )   
+    )
 
     # second step: select images from slider
     image_selection_slider.release(fn=select_template, 
@@ -634,13 +597,4 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=css) as iface:
         outputs = [template_frame,click_state, run_status, run_status2],
     )
 
-    # set example
-    gr.Markdown("## Examples")
-    gr.Examples(
-        examples=[os.path.join(os.path.dirname(__file__), "./test_sample/", test_sample) for test_sample in ["test-sample0.mp4", "test-sample1.mp4", "test-sample2.mp4", "test-sample3.mp4", "test-sample4.mp4"]],
-        inputs=[video_input],
-    )
-    gr.Markdown(article)
-
-iface.queue(concurrency_count=1)
 iface.launch(debug=True)
