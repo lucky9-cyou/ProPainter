@@ -18,7 +18,7 @@ from track_anything import TrackingAnything
 
 from model.misc import get_device
 from utils.download_util import load_file_from_url
-
+import time
 
 def parse_augment():
     parser = argparse.ArgumentParser()
@@ -280,7 +280,12 @@ def vos_tracking_video(video_state, interactive_state, mask_dropdown):
         template_mask[0][0]=1
         operation_log = [("Please add at least one mask to track by clicking the image in step2.","Error"), ("","")]
         # return video_output, video_state, interactive_state, operation_error
+    vos_tracking_start_time = time.time_ns()
     masks, logits, painted_images = model.generator(images=following_frames, template_mask=template_mask)
+    vos_tracking_end_time = time.time_ns()
+    
+    print(f"VOS tracking time: {(vos_tracking_end_time - vos_tracking_start_time) / 1e6} ms")
+    
     # clear GPU memory
     model.cutie.clear_memory()
 
@@ -540,9 +545,6 @@ with gr.Blocks(theme=gr.themes.Monochrome()) as iface:
                 inpaiting_video_output = gr.Video(visible=False, elem_classes="video")
                 inpaint_video_predict_button = gr.Button(value="2. Inpainting", visible=False, elem_classes="margin_center")
 
-        step4_title = gr.Markdown("---\n## Step4: Save Inpainting video", visible=False)
-        download_button = gr.DownloadButton(label=f"Download Inpaiting Video", value='', visible=False)
-
     # first step: get the video information 
     extract_frames_button.click(
         fn=get_frames_from_video,
@@ -551,7 +553,7 @@ with gr.Blocks(theme=gr.themes.Monochrome()) as iface:
         ],
         outputs=[video_state, video_info, scale_factor, template_frame,
                  image_selection_slider, track_pause_number_slider, point_prompt, clear_button_click, add_mask_button, template_frame,
-                 tracking_video_predict_button, tracking_video_output, inpaiting_video_output, remove_mask_button, inpaint_video_predict_button, step2_title, step3_title,mask_dropdown, run_status, run_status2, coors, click_button_click, step4_title, download_button]
+                 tracking_video_predict_button, tracking_video_output, inpaiting_video_output, remove_mask_button, inpaint_video_predict_button, step2_title, step3_title,mask_dropdown, run_status, run_status2, coors, click_button_click]
     )
 
     # second step: select images from slider

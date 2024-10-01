@@ -29,7 +29,12 @@ class RAFT_bi(nn.Module):
     def __init__(self, model_path='weights/raft-things.pth', device='cuda'):
         super().__init__()
         self.fix_raft = initialize_RAFT(model_path, device=device)
-
+        
+        # gtlf_1 = torch.randn(12, 3, 640, 360).cuda()
+        # gtlf_2 = torch.randn(12, 3, 640, 360).cuda()
+        # iters = 20
+        # onnx_program = torch.onnx.export(self.fix_raft, (gtlf_1, gtlf_2, iters), "raft.onnx", input_names = ["gtlf_1", "gtlf_2", "iters"], output_names = ["none", "gt_flows_forward"], dynamic_axes = {"gtlf_1": {0: "batch_size"}, "gtlf_2": {0: "batch_size"}, "gt_flows_forward": {0: "batch_size"}}, opset_version=20)
+                
         for p in self.fix_raft.parameters():
             p.requires_grad = False
 
@@ -38,12 +43,11 @@ class RAFT_bi(nn.Module):
 
     def forward(self, gt_local_frames, iters=20):
         b, l_t, c, h, w = gt_local_frames.size()
-        # print(gt_local_frames.shape)
+        print("raft_bi input size:", gt_local_frames.shape)
 
         with torch.no_grad():
             gtlf_1 = gt_local_frames[:, :-1, :, :, :].reshape(-1, c, h, w)
             gtlf_2 = gt_local_frames[:, 1:, :, :, :].reshape(-1, c, h, w)
-            # print(gtlf_1.shape)
 
             _, gt_flows_forward = self.fix_raft(gtlf_1, gtlf_2, iters=iters, test_mode=True)
             _, gt_flows_backward = self.fix_raft(gtlf_2, gtlf_1, iters=iters, test_mode=True)

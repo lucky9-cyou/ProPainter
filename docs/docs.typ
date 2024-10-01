@@ -64,3 +64,20 @@ python client.py --video inputs/sample/sample.mp4 --pose weights/vitpose.pt
 ```
 
 The inpainted video will be saved to `outputs/sample.mp4`. If you want to change the output path, you can use the `--output` option.
+
+= Task 3: Optimization inference speed
+== Optimize Raft
+Current command:
+```bash
+/usr/src/tensorrt/bin/trtexec --onnx=raft.onnx --saveEngine=raft-fp8.engine --fp8 --verbose  --minShapes='gtlf_1:1x3x640x360','gtlf_2:1x3x640x360' --optShapes='gtlf_1:12x3x640x360','gtlf_2:12x3x640x360' --maxShapes='gtlf_1:12x3x640x360','gtlf_2:12x3x640x360'  --dumpOptimizationProfile --builderOptimizationLevel=5 --useSpinWait --sparsity=enable > raft-fp8.log
+```
+All the time is based on the `sample.mp4` video. The video resolution is 640x360 (360p), and the video length is 1032 frames.
+#table(
+  columns: (1fr, auto, auto, auto),
+  inset: 10pt,
+  align: horizon,
+  table.header(
+    [*Method*], [*Original time*], [*Current time*], [*Speedup*]
+  ),
+  [TensorRT fp32], [24090.20447ms], [], [],
+)

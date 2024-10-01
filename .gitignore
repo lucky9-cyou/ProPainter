@@ -129,3 +129,7 @@ results/
 *debug*
 *old*
 *.sh
+
+output/
+*.engine
+*.onnx
