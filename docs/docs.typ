@@ -84,6 +84,7 @@ All the time is based on the `sample.mp4` video. The video resolution is 640x360
 
 == RAFT Optimization
 The RAFT model is composed of three parts: `feature block`, `context block` and `update block`. The following is the optimization strategy for each block:
+- Use #link("https://github.com/NVIDIA/TensorRT-Model-Optimizer")[TensorRT Model Optimizer] to convert the PyTorch model to ONNX format.
 - Using tensorrt `best` mode to optimization.
 
 Some commands:
@@ -105,3 +106,29 @@ Optimization results:
   ),
   [*Time*], [58275.726223 ms], [25342.446789 ms], [2.2]
 )
+
+== Feature Propagation and Transformer Optimization
+The feature propagation and transformer are the most time-consuming parts of the model. It is composed of `encoder`, `decoder`, `softsplit`, `softcomp`, `feat_prop` and `transformer`. The following is the optimization strategy for each part:
+- Use #link("https://github.com/NVIDIA/TensorRT-Model-Optimizer")[TensorRT Model Optimizer] to convert the PyTorch model to ONNX format.
+- Using tensorrt `best` mode to optimization.
+- Not consider `transformer` optimization.
+
+Some commands:
+```bash
+/usr/src/tensorrt/bin/trtexec --onnx=inpainter_encoder_quan.onnx --saveEngine=inpainter_encoder_quan_best.engine --best --verbose  --minShapes='input:9x5x640x360' --optShapes='input:18x5x640x360' --maxShapes='input:18x5x640x360'  --dumpOptimizationProfile --builderOptimizationLevel=4 --useSpinWait --sparsity=enable > inpainter_encoder_quan.log
+
+/usr/src/tensorrt/bin/trtexec --onnx=inpainter_decoder_quan.onnx --saveEngine=inpainter_decoder_quan_best.engine --best --verbose  --minShapes='input:6x128x160x90' --optShapes='input:11x128x160x90' --maxShapes='input:11x128x160x90'  --dumpOptimizationProfile --builderOptimizationLevel=4 --useSpinWait --sparsity=enable > inpainter_decoder_quan.log
+```
+
+Optimization results:
+#table(
+  columns: (auto, auto, auto, auto),
+  inset: 10pt,
+  align: horizon,
+  table.header(
+    [], [*Torch fp32*], [*TensorRT Int8*], [*Speedup*]
+  ),
+  [*Time*], [86457.671271 ms], [82206.148571], [1.05]
+)
+
+*NOTE:* most computation is in the `transformer` part, but the `transformer` part very complex and hard to optimize. It need more time to optimize.

@@ -85,7 +85,6 @@ class RAFT(nn.Module):
                     f"Data Type: {host_device_buffer.dtype} Data Format: {host_device_buffer.format}"
                 )
             self.update_block_context = self.update_block_engine.create_execution_context()
-            # self.export_quantized_model()
             
 
     def freeze_bn(self):
@@ -132,10 +131,12 @@ class RAFT(nn.Module):
         with autocast(enabled=self.args.mixed_precision):
             batch_size = image1.shape[0]
             x = torch.cat([image1, image2], dim=0)
+            
             # fmap = self.fnet(x)
             self.fnet_context.set_input_shape('x', x.shape)
             trt_utils.do_inference_v2(self.fnet_context, bindings=[int(x.data_ptr())] + self.fnet_bindings, outputs=self.fnet_outputs)
             fmap = trt_utils.ptr_to_tensor(self.fnet_outputs[0].device, self.fnet_outputs[0].nbytes, self.fnet_outputs[0].shape)[:batch_size * 2]
+            
             fmap1, fmap2 = torch.split(fmap, [batch_size, batch_size], dim=0)
 
         fmap1 = fmap1.float()
@@ -199,13 +200,13 @@ class RAFT(nn.Module):
         return flow_predictions
     
     def export_quantized_model(self):
-        fnet_input = torch.randn(24, 3, 640, 360)
-        cnet_input = torch.randn(12, 3, 640, 360)
+        fnet_input = torch.randn(24, 3, 640, 360).cuda()
+        cnet_input = torch.randn(12, 3, 640, 360).cuda()
         # net.shape, inp.shape, corr.shape, flow.shape
-        update_net = torch.randn(12, 128, 80, 45)
-        update_inp = torch.randn(12, 128, 80, 45)
-        update_corr = torch.randn(12, 324, 80, 45)
-        update_flow = torch.randn(12, 2, 80, 45)
+        update_net = torch.randn(12, 128, 80, 45).cuda()
+        update_inp = torch.randn(12, 128, 80, 45).cuda()
+        update_corr = torch.randn(12, 324, 80, 45).cuda()
+        update_flow = torch.randn(12, 2, 80, 45).cuda()
         
         onnx_program = torch.onnx.export(self.fnet, fnet_input, 'raft_fnet_quan.onnx', input_names=["x"], output_names=["fmap"], dynamic_axes={'x': {0: 'batch_size'}, 'fmap': {0: 'batch_size'}}, opset_version=20)
         onnx_program = torch.onnx.export(self.cnet, cnet_input, 'raft_cnet_quan.onnx', input_names=["x"], output_names=["cnet"], dynamic_axes={'x': {0: 'batch_size'}, 'cnet': {0: 'batch_size'}}, opset_version=20)

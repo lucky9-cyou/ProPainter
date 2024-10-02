@@ -184,11 +184,17 @@ class ProInpainter:
 		# set up ProPainter model
 		##############################################
 		self.model = InpaintGenerator(model_path=propainter_checkpoint).to(self.device)
+
 		self.model.eval()
 
 		if self.use_half:
 			self.fix_flow_complete = self.fix_flow_complete.half()
 			self.model = self.model.half()
+   
+		# transformer_feat = torch.randn(1, 18, 54, 30, 512).to(torch.half).cuda()
+		# transformer_mask = torch.randn(1, 11, 54, 30, 1).to(torch.half).cuda()
+  
+		# onnx_program = torch.onnx.export(self.model.transformers, (transformer_feat, transformer_mask), 'inpainter_transformer_quan.onnx', input_names=['feat', 'mask'], output_names=['ouput'], opset_version=20, verbose=True)
 
 	def inpaint(self, npframes, masks, ratio=1.0, dilate_radius=4, raft_iter=20, subvideo_length=80, neighbor_length=10, ref_stride=10):
 		"""
@@ -350,7 +356,10 @@ class ProInpainter:
 			ref_num = -1
 		
 		feature_propagation_time_start = time.time_ns()
-		# ---- feature propagation + transformer ----
+
+  		# ---- feature propagation + transformer ----
+		# config = mtq.INT8_SMOOTHQUANT_CFG
+		# def inpainter_forard(model):
 		for f in tqdm(range(0, video_length, neighbor_stride)):
 			neighbor_ids = [
 				i for i in range(max(0, f - neighbor_stride),
@@ -387,6 +396,10 @@ class ProInpainter:
 					comp_frames[idx] = comp_frames[idx].astype(np.uint8)
 			
 			torch.cuda.empty_cache()
+		# self.model = mtq.quantize(self.model, config, inpainter_forard)
+		# mtq.print_quant_summary(self.model)
+		# self.model.export_quantized_model()
+
 		feature_propagation_time_end = time.time_ns()
 		print(f"Feature propagation time: {(feature_propagation_time_end - feature_propagation_time_start) / 1e6} ms")
 

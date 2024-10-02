@@ -14,6 +14,9 @@ from model.modules.spectral_norm import spectral_norm as _spectral_norm
 from model.modules.flow_loss_utils import flow_warp
 from model.modules.deformconv import ModulatedDeformConv2d
 
+import tensorrt as trt
+from model import trt_utils
+
 from .misc import constant_init
 
 def length_sq(x):
@@ -228,6 +231,23 @@ class Encoder(nn.Module):
                 x = x0.view(bt, g, -1, h, w)
                 o = out.view(bt, g, -1, h, w)
                 out = torch.cat([x, o], 2).view(bt, -1, h, w)
+            torch.Size([18, 5, 640, 360])
+            # torch.Size([18, 64, 320, 180])
+            # torch.Size([18, 64, 320, 180])
+            # torch.Size([18, 64, 320, 180])
+            # torch.Size([18, 64, 320, 180])
+            # torch.Size([18, 128, 160, 90])
+            # torch.Size([18, 128, 160, 90])
+            # torch.Size([18, 256, 160, 90])
+            # torch.Size([18, 256, 160, 90])
+            # torch.Size([18, 384, 160, 90])
+            # torch.Size([18, 640, 160, 90])
+            # torch.Size([18, 512, 160, 90])
+            # torch.Size([18, 768, 160, 90])
+            # torch.Size([18, 384, 160, 90])
+            # torch.Size([18, 640, 160, 90])
+            # torch.Size([18, 256, 160, 90])
+            # torch.Size([18, 512, 160, 90])
             out = layer(out)
         return out
 
@@ -261,7 +281,15 @@ class InpaintGenerator(BaseNetwork):
 
         # encoder
         self.encoder = Encoder()
-
+        self.encoder_engine = trt_utils.load_engine("/root/ProPainter/weights/inpainter_encoder_quan_best.engine")
+        _, self.encoder_outputs, self.encoder_bindings = trt_utils.allocate_buffers(self.encoder_engine)
+        for host_device_buffer in self.encoder_outputs:
+            print(
+                    f"Tensor Name: {host_device_buffer.name} Shape: {host_device_buffer.shape} "
+                    f"Data Type: {host_device_buffer.dtype} Data Format: {host_device_buffer.format}"
+            )
+        self.encoder_context = self.encoder_engine.create_execution_context()
+        
         # decoder
         self.decoder = nn.Sequential(
             deconv(channel, 128, kernel_size=3, padding=1),
@@ -271,6 +299,15 @@ class InpaintGenerator(BaseNetwork):
             deconv(64, 64, kernel_size=3, padding=1),
             nn.LeakyReLU(0.2, inplace=True),
             nn.Conv2d(64, 3, kernel_size=3, stride=1, padding=1))
+        
+        self.decoder_engine = trt_utils.load_engine("/root/ProPainter/weights/inpainter_decoder_quan_best.engine")
+        _, self.decoder_outputs, self.decoder_bindings = trt_utils.allocate_buffers(self.decoder_engine)
+        for host_device_buffer in self.decoder_outputs:
+            print(
+                    f"Tensor Name: {host_device_buffer.name} Shape: {host_device_buffer.shape} "
+                    f"Data Type: {host_device_buffer.dtype} Data Format: {host_device_buffer.format}"
+            )
+        self.decoder_context = self.decoder_engine.create_execution_context()
 
         # soft split and soft composition
         kernel_size = (7, 7)
@@ -326,11 +363,19 @@ class InpaintGenerator(BaseNetwork):
         l_t = num_local_frames
         b, t, _, ori_h, ori_w = masked_frames.size()
 
-        print('encoder input shape:', torch.cat([masked_frames.view(b * t, 3, ori_h, ori_w), masks_in.view(b * t, 1, ori_h, ori_w), masks_updated.view(b * t, 1, ori_h, ori_w)], dim=1).shape)
         # extracting features
-        enc_feat = self.encoder(torch.cat([masked_frames.view(b * t, 3, ori_h, ori_w),
+        # [9, 5, 640, 360] -> [18, 5, 640, 360]
+        # enc_feat = self.encoder(torch.cat([masked_frames.view(b * t, 3, ori_h, ori_w),
+        #                                 masks_in.view(b * t, 1, ori_h, ori_w),
+        #                                 masks_updated.view(b * t, 1, ori_h, ori_w)], dim=1))
+        
+        enc_input = torch.cat([masked_frames.view(b * t, 3, ori_h, ori_w),
                                         masks_in.view(b * t, 1, ori_h, ori_w),
-                                        masks_updated.view(b * t, 1, ori_h, ori_w)], dim=1))
+                                        masks_updated.view(b * t, 1, ori_h, ori_w)], dim=1)
+        self.encoder_context.set_input_shape('input', enc_input.shape)
+        trt_utils.do_inference_v2(self.encoder_context, bindings=[int(enc_input.data_ptr())] + self.encoder_bindings, outputs=self.encoder_outputs)
+        enc_feat = trt_utils.ptr_to_tensor(self.encoder_outputs[0].device, self.encoder_outputs[0].nbytes, self.encoder_outputs[0].shape)[:b * t]
+
         _, c, h, w = enc_feat.size()
         local_feat = enc_feat.view(b, t, c, h, w)[:, :l_t, ...]
         ref_feat = enc_feat.view(b, t, c, h, w)[:, l_t:, ...]
@@ -357,8 +402,9 @@ class InpaintGenerator(BaseNetwork):
 
         trans_feat = self.ss(enc_feat.view(-1, c, h, w), b, fold_feat_size)
         mask_pool_l = rearrange(mask_pool_l, 'b t c h w -> b t h w c').contiguous()
-        print('transformers shape:', trans_feat.shape, fold_feat_size, mask_pool_l.shape)
-        trans_feat = self.transformers(trans_feat, fold_feat_size, mask_pool_l, t_dilation=t_dilation)
+        # transformers shape: torch.Size([1, 9, 54, 30, 512]) (160, 90) torch.Size([1, 6, 54, 30, 1])
+        # transformers shape: torch.Size([1, 18, 54, 30, 512]) (160, 90) torch.Size([1, 11, 54, 30, 1])
+        trans_feat = self.transformers(trans_feat, mask_pool_l)
         trans_feat = self.sc(trans_feat, t, fold_feat_size)
         trans_feat = trans_feat.view(b, t, -1, h, w)
 
@@ -368,12 +414,29 @@ class InpaintGenerator(BaseNetwork):
             output = self.decoder(enc_feat.view(-1, c, h, w))
             output = torch.tanh(output).view(b, t, 3, ori_h, ori_w)
         else:
-            print('decoder input shape:', enc_feat[:, :l_t].view(-1, c, h, w).shape)
-            output = self.decoder(enc_feat[:, :l_t].view(-1, c, h, w))
+            # decoder input shape: torch.Size([6, 128, 160, 90]) -> torch.Size([11, 128, 160, 90])
+            # output = self.decoder(enc_feat[:, :l_t].view(-1, c, h, w))
+            decoder_input = enc_feat[:, :l_t].view(-1, c, h, w)
+            
+            self.decoder_context.set_input_shape('input', decoder_input.shape)
+            trt_utils.do_inference_v2(self.decoder_context, bindings=[int(decoder_input.data_ptr())] + self.decoder_bindings, outputs=self.decoder_outputs)
+            output = trt_utils.ptr_to_tensor(self.decoder_outputs[0].device, self.decoder_outputs[0].nbytes, self.decoder_outputs[0].shape)[:decoder_input.shape[0]]
+            
             output = torch.tanh(output).view(b, l_t, 3, ori_h, ori_w)
 
         return output
 
+    def export_quantized_model(self):
+        encoder_input = torch.randn(18, 5, 640, 360).to(torch.half).cuda()
+        decoder_input = torch.randn(11, 128, 160, 90).to(torch.half).cuda()
+        
+        transformer_feat = torch.randn(1, 18, 54, 30, 512).to(torch.half).cuda()
+        transformer_mask = torch.randn(1, 11, 54, 30, 1).to(torch.half).cuda()
+        
+        
+        onnx_program = torch.onnx.export(self.encoder, encoder_input, 'inpainter_encoder_quan.onnx', input_names=['input'], output_names=['ouput'], dynamic_axes={'input': {0: 'batch_size'}, 'output': {0: 'batch_size'}}, opset_version=20)
+        onnx_program = torch.onnx.export(self.decoder, decoder_input, 'inpainter_decoder_quan.onnx', input_names=['input'], output_names=['ouput'], dynamic_axes={'input': {0: 'batch_size'}, 'output': {0: 'batch_size'}}, opset_version=20)
+        onnx_program = torch.onnx.export(self.transformers, (transformer_feat, transformer_mask), 'inpainter_transformer_quan.onnx', input_names=['feat', 'mask'], output_names=['ouput'], dynamic_axes={'feat': {1: 'batch_size'}, 'mask': {1: 'batch_size'}, 'output': {1: 'batch_size'}}, opset_version=20)
 
 # ######################################################################
 #  Discriminator for Temporal Patch GAN

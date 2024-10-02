@@ -64,7 +64,7 @@ class RAFT_bi(nn.Module):
         gt_flows_backward = gt_flows_backward.view(b, l_t-1, 2, h, w)
 
         return gt_flows_forward, gt_flows_backward
-    
+
     def export_quantized_model(self):
         self.fix_raft.export_quantized_model()
 
