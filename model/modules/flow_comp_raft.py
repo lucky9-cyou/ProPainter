@@ -5,13 +5,6 @@ import torch.nn.functional as F
 from RAFT import RAFT
 from model.modules.flow_loss_utils import flow_warp, ternary_loss2
 
-from pytorch_quantization import nn as quant_nn
-from pytorch_quantization import calib
-from pytorch_quantization.tensor_quant import QuantDescriptor
-from pytorch_quantization import quant_modules
-import modelopt.torch.quantization as mtq
-
-
 
 def initialize_RAFT(model_path='weights/raft-things.pth', device='cuda'):
     """Initializes the RAFT model.
@@ -21,8 +14,10 @@ def initialize_RAFT(model_path='weights/raft-things.pth', device='cuda'):
     args.small = False
     args.mixed_precision = False
     args.alternate_corr = False
+    args.fnet_path = "/root/ProPainter/weights/raft_fnet_quan_best.engine"
+    args.cnet_path = "/root/ProPainter/weights/raft_cnet_quan_best.engine"
+    args.update_block_path = "/root/ProPainter/weights/raft_update_block_quan_best.engine"
     
-    quant_modules.initialize()
     model = RAFT(args)
     weights = torch.load(args.raft_model, map_location='cpu')
     
@@ -53,7 +48,6 @@ class RAFT_bi(nn.Module):
 
         self.l1_criterion = nn.L1Loss()
         self.eval()
-        self.enable_calibration()
 
     def forward(self, gt_local_frames, iters=20):
         b, l_t, c, h, w = gt_local_frames.size()
@@ -70,35 +64,6 @@ class RAFT_bi(nn.Module):
         gt_flows_backward = gt_flows_backward.view(b, l_t-1, 2, h, w)
 
         return gt_flows_forward, gt_flows_backward
-        
-    def enable_calibration(self):
-        for name, module in self.fix_raft.named_modules():
-            if isinstance(module, quant_nn.TensorQuantizer):
-                if module._calibrator is not None:
-                    module.disable_quant()
-                    module.enable_calib()
-                else:
-                    module.disable()
-
-    def disable_calibration(self):
-        for name, module in self.fix_raft.named_modules():
-            if isinstance(module, quant_nn.TensorQuantizer):
-                if module._calibrator is not None:
-                    module.disable_calib()
-                    module.enable_quant()
-                else:
-                    module.enable()
-    
-    def compute_amax(self, method="percentile", percentile=99.99):
-        # Load calib result
-        for name, module in self.fix_raft.named_modules():
-            if isinstance(module, quant_nn.TensorQuantizer):
-                if module._calibrator is not None:
-                    if isinstance(module._calibrator, calib.MaxCalibrator):
-                        module.load_calib_amax()
-                    else:
-                        module.load_calib_amax(method, percentile)
-                print(F"{name:40}: {module}")
     
     def export_quantized_model(self):
         self.fix_raft.export_quantized_model()

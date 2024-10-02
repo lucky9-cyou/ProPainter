@@ -83,14 +83,25 @@ All the time is based on the `sample.mp4` video. The video resolution is 640x360
 )
 
 == RAFT Optimization
-The RAFT model is composed of three parts: feature block, context block and update block. The following is the optimization strategy for each block:
+The RAFT model is composed of three parts: `feature block`, `context block` and `update block`. The following is the optimization strategy for each block:
 - Using tensorrt `best` mode to optimization.
 
 Some commands:
 ```bash
 /usr/src/tensorrt/bin/trtexec --onnx=raft_fnet_quan.onnx --saveEngine=raft_fnet_quan_best.engine --best --verbose  --minShapes='x:2x3x640x360' --optShapes='x:24x3x640x360' --maxShapes='x:24x3x640x360'  --dumpOptimizationProfile --builderOptimizationLevel=4 --useSpinWait --sparsity=enable > raft_fnet_quan_best.log
 
-/usr/src/tensorrt/bin/trtexec --onnx=raft_cnet.onnx --saveEngine=raft_cnet_best.engine --best --verbose  --minShapes='x:1x3x640x360' --optShapes='x:12x3x640x360' --maxShapes='x:12x3x640x360'  --dumpOptimizationProfile --builderOptimizationLevel=4 --useSpinWait --sparsity=enable > raft_cnet_best.log
+/usr/src/tensorrt/bin/trtexec --onnx=raft_cnet_quan.onnx --saveEngine=raft_cnet_quan_best.engine --best --verbose  --minShapes='x:1x3x640x360' --optShapes='x:12x3x640x360' --maxShapes='x:12x3x640x360'  --dumpOptimizationProfile --builderOptimizationLevel=4 --useSpinWait --sparsity=enable > raft_cnet_quan_best.log
 
-/usr/src/tensorrt/bin/trtexec --onnx=raft_update_block.onnx --saveEngine=raft_update_block_best.engine --best --verbose  --minShapes='net_in:1x128x80x45','inp:1x128x80x45','corr:1x324x80x45','flow:1x2x80x45' --optShapes='net_in:12x128x80x45','inp:12x128x80x45','corr:12x324x80x45','flow:12x2x80x45' --maxShapes='net_in:12x128x80x45','inp:12x128x80x45','corr:12x324x80x45','flow:12x2x80x45'  --dumpOptimizationProfile --builderOptimizationLevel=4 --useSpinWait --sparsity=enable > raft_update_block_best.log
+/usr/src/tensorrt/bin/trtexec --onnx=raft_update_block_quan.onnx --saveEngine=raft_update_block_quan_best.engine --best --verbose  --minShapes='net_in:1x128x80x45','inp:1x128x80x45','corr:1x324x80x45','flow:1x2x80x45' --optShapes='net_in:12x128x80x45','inp:12x128x80x45','corr:12x324x80x45','flow:12x2x80x45' --maxShapes='net_in:12x128x80x45','inp:12x128x80x45','corr:12x324x80x45','flow:12x2x80x45'  --dumpOptimizationProfile --builderOptimizationLevel=4 --useSpinWait --sparsity=enable > raft_update_block_quan_best.log
 ```
+
+Optimization results:
+#table(
+  columns: (auto, auto, auto, auto),
+  inset: 10pt,
+  align: horizon,
+  table.header(
+    [], [*Torch fp32*], [*TensorRT Int8*], [*Speedup*]
+  ),
+  [*Time*], [58275.726223 ms], [25342.446789 ms], [2.2]
+)

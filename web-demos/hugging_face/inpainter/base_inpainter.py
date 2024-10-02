@@ -15,6 +15,7 @@ from model.recurrent_flow_completion import RecurrentFlowCompleteNet
 from model.propainter import InpaintGenerator
 from core.utils import to_tensors
 import time
+import modelopt.torch.quantization as mtq
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -236,6 +237,9 @@ class ProInpainter:
 			# use fp32 for RAFT
 			if frames.size(1) > short_clip_len:
 				gt_flows_f_list, gt_flows_b_list = [], []
+
+				# config = mtq.INT8_SMOOTHQUANT_CFG
+				# def raft_forward(model):
 				for f in range(0, video_length, short_clip_len):
 					end_f = min(video_length, f + short_clip_len)
 					if f == 0:
@@ -246,6 +250,7 @@ class ProInpainter:
 					gt_flows_f_list.append(flows_f)
 					gt_flows_b_list.append(flows_b)
 					torch.cuda.empty_cache()
+				# self.fix_raft = mtq.quantize(self.fix_raft, config, raft_forward)
 					
 				gt_flows_f = torch.cat(gt_flows_f_list, dim=1)
 				gt_flows_b = torch.cat(gt_flows_b_list, dim=1)
@@ -260,9 +265,8 @@ class ProInpainter:
 
 			raft_time_end = time.time_ns()
 			print(f"RAFT time: {(raft_time_end - raft_time_start) / 1e6} ms")
-			self.fix_raft.disable_calibration()
-			self.fix_raft.compute_amax()
-			self.fix_raft.export_quantized_model()
+			# mtq.print_quant_summary(self.fix_raft)
+			# self.fix_raft.export_quantized_model()
    
 
 			complete_flow_time_start = time.time_ns()

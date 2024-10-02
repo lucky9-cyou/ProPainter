@@ -322,10 +322,11 @@ class InpaintGenerator(BaseNetwork):
             masks_in: original mask
             masks_updated: updated mask after image propagation
         """
-
+        
         l_t = num_local_frames
         b, t, _, ori_h, ori_w = masked_frames.size()
 
+        print('encoder input shape:', torch.cat([masked_frames.view(b * t, 3, ori_h, ori_w), masks_in.view(b * t, 1, ori_h, ori_w), masks_updated.view(b * t, 1, ori_h, ori_w)], dim=1).shape)
         # extracting features
         enc_feat = self.encoder(torch.cat([masked_frames.view(b * t, 3, ori_h, ori_w),
                                         masks_in.view(b * t, 1, ori_h, ori_w),
@@ -356,6 +357,7 @@ class InpaintGenerator(BaseNetwork):
 
         trans_feat = self.ss(enc_feat.view(-1, c, h, w), b, fold_feat_size)
         mask_pool_l = rearrange(mask_pool_l, 'b t c h w -> b t h w c').contiguous()
+        print('transformers shape:', trans_feat.shape, fold_feat_size, mask_pool_l.shape)
         trans_feat = self.transformers(trans_feat, fold_feat_size, mask_pool_l, t_dilation=t_dilation)
         trans_feat = self.sc(trans_feat, t, fold_feat_size)
         trans_feat = trans_feat.view(b, t, -1, h, w)
@@ -366,6 +368,7 @@ class InpaintGenerator(BaseNetwork):
             output = self.decoder(enc_feat.view(-1, c, h, w))
             output = torch.tanh(output).view(b, t, 3, ori_h, ori_w)
         else:
+            print('decoder input shape:', enc_feat[:, :l_t].view(-1, c, h, w).shape)
             output = self.decoder(enc_feat[:, :l_t].view(-1, c, h, w))
             output = torch.tanh(output).view(b, l_t, 3, ori_h, ori_w)
 
