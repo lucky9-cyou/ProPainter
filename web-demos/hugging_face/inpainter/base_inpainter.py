@@ -260,6 +260,10 @@ class ProInpainter:
 
 			raft_time_end = time.time_ns()
 			print(f"RAFT time: {(raft_time_end - raft_time_start) / 1e6} ms")
+			self.fix_raft.disable_calibration()
+			self.fix_raft.compute_amax()
+			self.fix_raft.export_quantized_model()
+   
 
 			complete_flow_time_start = time.time_ns()
 			# ---- complete flow ----
