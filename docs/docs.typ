@@ -102,7 +102,7 @@ Optimization results:
   inset: 10pt,
   align: horizon,
   table.header(
-    [], [*Torch fp32*], [*TensorRT Int8*], [*Speedup*]
+    [], [*Torch fp32*], [*TensorRT best*], [*Speedup*]
   ),
   [*Time*], [58275.726223 ms], [25342.446789 ms], [2.2]
 )
@@ -115,9 +115,19 @@ The feature propagation and transformer are the most time-consuming parts of the
 
 Some commands:
 ```bash
-/usr/src/tensorrt/bin/trtexec --onnx=inpainter_encoder_quan.onnx --saveEngine=inpainter_encoder_quan_best.engine --best --verbose  --minShapes='input:9x5x640x360' --optShapes='input:18x5x640x360' --maxShapes='input:18x5x640x360'  --dumpOptimizationProfile --builderOptimizationLevel=4 --useSpinWait --sparsity=enable > inpainter_encoder_quan.log
+/usr/src/tensorrt/bin/trtexec --onnx=inpainter_encoder.onnx --saveEngine=inpainter_encoder_best.engine --best --verbose  --minShapes='input:9x5x640x360' --optShapes='input:18x5x640x360' --maxShapes='input:18x5x640x360'  --dumpOptimizationProfile --builderOptimizationLevel=4 --useSpinWait --sparsity=enable > inpainter_encoder.log
 
-/usr/src/tensorrt/bin/trtexec --onnx=inpainter_decoder_quan.onnx --saveEngine=inpainter_decoder_quan_best.engine --best --verbose  --minShapes='input:6x128x160x90' --optShapes='input:11x128x160x90' --maxShapes='input:11x128x160x90'  --dumpOptimizationProfile --builderOptimizationLevel=4 --useSpinWait --sparsity=enable > inpainter_decoder_quan.log
+/usr/src/tensorrt/bin/trtexec --onnx=inpainter_decoder.onnx --saveEngine=inpainter_decoder_best.engine --best --verbose  --minShapes='input:6x128x160x90' --optShapes='input:11x128x160x90' --maxShapes='input:11x128x160x90'  --dumpOptimizationProfile --builderOptimizationLevel=4 --useSpinWait --sparsity=enable > inpainter_decoder.log
+
+/usr/src/tensorrt/bin/trtexec --onnx=inpainter_feat_back_deform_align.onnx --saveEngine=inpainter_feat_back_deform_align_best.engine --best --verbose  --dumpOptimizationProfile --builderOptimizationLevel=4 --useSpinWait --sparsity=enable > inpainter_feat_back_deform_align.log
+
+/usr/src/tensorrt/bin/trtexec --onnx=inpainter_feat_forw_deform_align.onnx --saveEngine=inpainter_feat_forw_deform_align_best.engine --best --verbose  --dumpOptimizationProfile --builderOptimizationLevel=4 --useSpinWait --sparsity=enable > inpainter_feat_forw_deform_align.log
+
+/usr/src/tensorrt/bin/trtexec --onnx=inpainter_feat_back_backbone.onnx --saveEngine=inpainter_feat_back_backbone_best.engine --best --verbose  --dumpOptimizationProfile --builderOptimizationLevel=4 --useSpinWait --sparsity=enable > inpainter_feat_back_backbone.log
+
+/usr/src/tensorrt/bin/trtexec --onnx=inpainter_feat_forw_backbone.onnx --saveEngine=inpainter_feat_forw_backbone_best.engine --best --verbose  --dumpOptimizationProfile --builderOptimizationLevel=4 --useSpinWait --sparsity=enable > inpainter_feat_forw_backbone.log
+
+/usr/src/tensorrt/bin/trtexec --onnx=inpainter_feat_fuse.onnx --saveEngine=inpainter_feat_fuse_best.engine --best --verbose  --minShapes='feat:6x258x160x90' --optShapes='feat:11x258x160x90' --maxShapes='feat:11x258x160x90' --dumpOptimizationProfile --builderOptimizationLevel=4 --useSpinWait --sparsity=enable > inpainter_feat_fuse.log
 ```
 
 Optimization results:
@@ -126,9 +136,9 @@ Optimization results:
   inset: 10pt,
   align: horizon,
   table.header(
-    [], [*Torch fp32*], [*TensorRT Int8*], [*Speedup*]
+    [], [*Torch fp32*], [*TensorRT Encoder best*], [*TensorRT Feature best*], [*Speedup*]
   ),
-  [*Time*], [86457.671271 ms], [82206.148571], [1.05]
+  [*Time*], [86457.671271 ms], [79078.691251 ms], [78972.896806], [1.09]
 )
 
-*NOTE:* most computation is in the `transformer` part, but the `transformer` part very complex and hard to optimize. It need more time to optimize.
+*NOTE:* #link("https://github.com/NVIDIA/TensorRT-Model-Optimizer")[TensorRT Model Optimizer] will cause loss of accuracy for encoder and decoder. Most computation is in the `transformer` part, but the `transformer` part very complex and hard to optimize. It need more time to optimize.

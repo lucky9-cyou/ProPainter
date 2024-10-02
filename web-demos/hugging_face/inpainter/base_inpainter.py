@@ -191,10 +191,7 @@ class ProInpainter:
 			self.fix_flow_complete = self.fix_flow_complete.half()
 			self.model = self.model.half()
    
-		# transformer_feat = torch.randn(1, 18, 54, 30, 512).to(torch.half).cuda()
-		# transformer_mask = torch.randn(1, 11, 54, 30, 1).to(torch.half).cuda()
-  
-		# onnx_program = torch.onnx.export(self.model.transformers, (transformer_feat, transformer_mask), 'inpainter_transformer_quan.onnx', input_names=['feat', 'mask'], output_names=['ouput'], opset_version=20, verbose=True)
+		self.model.export_quantized_model()
 
 	def inpaint(self, npframes, masks, ratio=1.0, dilate_radius=4, raft_iter=20, subvideo_length=80, neighbor_length=10, ref_stride=10):
 		"""
@@ -358,7 +355,7 @@ class ProInpainter:
 		feature_propagation_time_start = time.time_ns()
 
   		# ---- feature propagation + transformer ----
-		# config = mtq.INT8_SMOOTHQUANT_CFG
+		# config = mtq.FP8_DEFAULT_CFG
 		# def inpainter_forard(model):
 		for f in tqdm(range(0, video_length, neighbor_stride)):
 			neighbor_ids = [

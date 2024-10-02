@@ -16,6 +16,8 @@ from model.modules.deformconv import ModulatedDeformConv2d
 
 import tensorrt as trt
 from model import trt_utils
+import time
+import deform_conv2d_onnx_exporter
 
 from .misc import constant_init
 
@@ -73,7 +75,7 @@ class DeformableAlignment(ModulatedDeformConv2d):
 
 
 class BidirectionalPropagation(nn.Module):
-    def __init__(self, channel, learnable=True):
+    def __init__(self, channel, learnable=True, feat=True):
         super(BidirectionalPropagation, self).__init__()
         self.deform_align = nn.ModuleDict()
         self.backbone = nn.ModuleDict()
@@ -96,7 +98,60 @@ class BidirectionalPropagation(nn.Module):
                     nn.Conv2d(2*channel+2, channel, 3, 1, 1),
                     nn.LeakyReLU(negative_slope=0.2, inplace=True),
                     nn.Conv2d(channel, channel, 3, 1, 1),
-                ) 
+                )
+        if feat:
+            self.deform_align_back = trt_utils.load_engine("/root/ProPainter/weights/inpainter_feat_back_deform_align_best.engine")
+            _, self.deform_align_back_outputs, self.deform_align_back_bindings = trt_utils.allocate_buffers(self.deform_align_back)
+            for host_device_buffer in self.deform_align_back_outputs:
+                print(
+                        f"Tensor Name: {host_device_buffer.name} Shape: {host_device_buffer.shape} "
+                        f"Data Type: {host_device_buffer.dtype} Data Format: {host_device_buffer.format}"
+                )
+            self.deform_align_back_context = self.deform_align_back.create_execution_context()
+            self.deform_align_back_context.set_input_shape('feat', [1, 128, 160, 90])
+            self.deform_align_back_context.set_input_shape('cond', [1, 261, 160, 90])
+            self.deform_align_back_context.set_input_shape('flow', [1, 2, 160, 90])
+            
+            self.deform_align_forw = trt_utils.load_engine("/root/ProPainter/weights/inpainter_feat_forw_deform_align_best.engine")
+            _, self.deform_align_forw_outputs, self.deform_align_forw_bindings = trt_utils.allocate_buffers(self.deform_align_forw)
+            for host_device_buffer in self.deform_align_forw_outputs:
+                print(
+                        f"Tensor Name: {host_device_buffer.name} Shape: {host_device_buffer.shape} "
+                        f"Data Type: {host_device_buffer.dtype} Data Format: {host_device_buffer.format}"
+                )
+            self.deform_align_forw_context = self.deform_align_forw.create_execution_context()
+            self.deform_align_forw_context.set_input_shape('feat', [1, 128, 160, 90])
+            self.deform_align_forw_context.set_input_shape('cond', [1, 261, 160, 90])
+            self.deform_align_forw_context.set_input_shape('flow', [1, 2, 160, 90])
+            
+            self.backbone_back = trt_utils.load_engine("/root/ProPainter/weights/inpainter_feat_back_backbone_best.engine")
+            _, self.backbone_back_outputs, self.backbone_back_bindings = trt_utils.allocate_buffers(self.backbone_back)
+            for host_device_buffer in self.backbone_back_outputs:
+                print(
+                        f"Tensor Name: {host_device_buffer.name} Shape: {host_device_buffer.shape} "
+                        f"Data Type: {host_device_buffer.dtype} Data Format: {host_device_buffer.format}"
+                )
+            self.backbone_back_context = self.backbone_back.create_execution_context()
+            self.backbone_back_context.set_input_shape('feat', [1, 258, 160, 90])
+            
+            self.backbone_forw = trt_utils.load_engine("/root/ProPainter/weights/inpainter_feat_forw_backbone_best.engine")
+            _, self.backbone_forw_outputs, self.backbone_forw_bindings = trt_utils.allocate_buffers(self.backbone_forw)
+            for host_device_buffer in self.backbone_forw_outputs:
+                print(
+                        f"Tensor Name: {host_device_buffer.name} Shape: {host_device_buffer.shape} "
+                        f"Data Type: {host_device_buffer.dtype} Data Format: {host_device_buffer.format}"
+                )
+            self.backbone_forw_context = self.backbone_forw.create_execution_context()
+            self.backbone_forw_context.set_input_shape('feat', [1, 258, 160, 90])
+            
+            self.fuse_ = trt_utils.load_engine("/root/ProPainter/weights/inpainter_feat_fuse_best.engine")
+            _, self.fuse_outputs, self.fuse_bindings = trt_utils.allocate_buffers(self.fuse_)
+            for host_device_buffer in self.fuse_outputs:
+                print(
+                        f"Tensor Name: {host_device_buffer.name} Shape: {host_device_buffer.shape} "
+                        f"Data Type: {host_device_buffer.dtype} Data Format: {host_device_buffer.format}"
+                )
+            self.fuse_context = self.fuse_.create_execution_context()
             
     def binary_mask(self, mask, th=0.1):
         mask[mask>th] = 1
@@ -152,7 +207,17 @@ class BidirectionalPropagation(nn.Module):
 
                     if self.learnable:
                         cond = torch.cat([feat_current, feat_warped, flow_prop, flow_vaild_mask, mask_current], dim=1)
-                        feat_prop = self.deform_align[module_name](feat_prop, cond, flow_prop)
+                        # forward_1 feat prop shape: torch.Size([1, 128, 160, 90]) cond shape: torch.Size([1, 261, 160, 90]) flow prop shape: torch.Size([1, 2, 160, 90])
+                        # backward_1 feat prop shape: torch.Size([1, 128, 160, 90]) cond shape: torch.Size([1, 261, 160, 90]) flow prop shape: torch.Size([1, 2, 160, 90])
+                        # feat_prop = self.deform_align[module_name](feat_prop, cond, flow_prop)
+                        if module_name == 'backward_1':
+                            trt_utils.do_inference_v2(self.deform_align_back_context, bindings=[int(feat_prop.data_ptr()), int(cond.data_ptr()), int(flow_prop.data_ptr())] + self.deform_align_back_bindings, outputs=self.deform_align_back_outputs)
+                            feat_prop = trt_utils.ptr_to_tensor(self.deform_align_back_outputs[0].device, self.deform_align_back_outputs[0].nbytes, self.deform_align_back_outputs[0].shape)
+                        else:
+                            trt_utils.do_inference_v2(self.deform_align_forw_context, bindings=[int(feat_prop.data_ptr()), int(cond.data_ptr()), int(flow_prop.data_ptr())] + self.deform_align_forw_bindings, outputs=self.deform_align_forw_outputs)
+                            feat_prop = trt_utils.ptr_to_tensor(self.deform_align_forw_outputs[0].device, self.deform_align_forw_outputs[0].nbytes, self.deform_align_forw_outputs[0].shape)
+                        # feat prop shape: torch.Size([1, 128, 160, 90])
+                        # feat prop shape: torch.Size([1, 128, 160, 90])
                         mask_prop = mask_current
                     else:
                         mask_prop_valid = flow_warp(mask_prop, flow_prop.permute(0, 2, 3, 1))
@@ -166,7 +231,19 @@ class BidirectionalPropagation(nn.Module):
                 # refine
                 if self.learnable:
                     feat = torch.cat([feat_current, feat_prop, mask_current], dim=1)
-                    feat_prop = feat_prop + self.backbone[module_name](feat)
+                    
+                    # forward_1 feat shape: torch.Size([1, 258, 160, 90])
+                    # backward_1 feat shape: torch.Size([1, 258, 160, 90])
+                    # feat_prop = feat_prop + self.backbone[module_name](feat)
+                    if module_name == 'backward_1':
+                        trt_utils.do_inference_v2(self.backbone_back_context, bindings=[int(feat.data_ptr())] + self.backbone_back_bindings, outputs=self.backbone_back_outputs)
+                        feat_prop = feat_prop + trt_utils.ptr_to_tensor(self.backbone_back_outputs[0].device, self.backbone_back_outputs[0].nbytes, self.backbone_back_outputs[0].shape)
+                    else:
+                        trt_utils.do_inference_v2(self.backbone_forw_context, bindings=[int(feat.data_ptr())] + self.backbone_forw_bindings, outputs=self.backbone_forw_outputs)
+                        feat_prop = feat_prop + trt_utils.ptr_to_tensor(self.backbone_forw_outputs[0].device, self.backbone_forw_outputs[0].nbytes, self.backbone_forw_outputs[0].shape)
+                    # feat prop shape: torch.Size([1, 128, 160, 90])
+                    # feat prop shape: torch.Size([1, 128, 160, 90])
+
                     # feat_prop = self.backbone[module_name](feat_prop)
 
                 feats[module_name].append(feat_prop)
@@ -177,13 +254,21 @@ class BidirectionalPropagation(nn.Module):
                 feats[module_name] = feats[module_name][::-1]
                 masks[module_name] = masks[module_name][::-1]
 
-        outputs_b = torch.stack(feats['backward_1'], dim=1).view(-1, c, h, w)
-        outputs_f = torch.stack(feats['forward_1'], dim=1).view(-1, c, h, w)
+        outputs_b = torch.stack(feats['backward_1'], dim=1).view(t, c, h, w)
+        outputs_f = torch.stack(feats['forward_1'], dim=1).view(t, c, h, w)
 
         if self.learnable:
-            mask_in = mask.view(-1, 2, h, w)
+            mask_in = mask.view(t, 2, h, w)
             masks_b, masks_f = None, None
-            outputs = self.fuse(torch.cat([outputs_b, outputs_f, mask_in], dim=1)) + x.view(-1, c, h, w)
+            feat = torch.cat([outputs_b, outputs_f, mask_in], dim=1)
+            # feat shape: torch.Size([6, 258, 160, 90])
+            # feat shape: torch.Size([11, 258, 160, 90])
+            # outputs = self.fuse(feat) + x.view(-1, c, h, w)
+            self.fuse_context.set_input_shape('feat', feat.shape)
+            trt_utils.do_inference_v2(self.fuse_context, bindings=[int(feat.data_ptr())] + self.fuse_bindings, outputs=self.fuse_outputs)
+            outputs = trt_utils.ptr_to_tensor(self.fuse_outputs[0].device, self.fuse_outputs[0].nbytes, self.fuse_outputs[0].shape)[:t] + x.view(-1, c, h, w)
+            # outputs shape: torch.Size([6, 128, 160, 90])
+            # outputs shape: torch.Size([11, 128, 160, 90])
         else:
             masks_b = torch.stack(masks['backward_1'], dim=1)
             masks_f = torch.stack(masks['forward_1'], dim=1)
@@ -281,7 +366,7 @@ class InpaintGenerator(BaseNetwork):
 
         # encoder
         self.encoder = Encoder()
-        self.encoder_engine = trt_utils.load_engine("/root/ProPainter/weights/inpainter_encoder_quan_best.engine")
+        self.encoder_engine = trt_utils.load_engine("/root/ProPainter/weights/inpainter_encoder_best.engine")
         _, self.encoder_outputs, self.encoder_bindings = trt_utils.allocate_buffers(self.encoder_engine)
         for host_device_buffer in self.encoder_outputs:
             print(
@@ -300,7 +385,7 @@ class InpaintGenerator(BaseNetwork):
             nn.LeakyReLU(0.2, inplace=True),
             nn.Conv2d(64, 3, kernel_size=3, stride=1, padding=1))
         
-        self.decoder_engine = trt_utils.load_engine("/root/ProPainter/weights/inpainter_decoder_quan_best.engine")
+        self.decoder_engine = trt_utils.load_engine("/root/ProPainter/weights/inpainter_decoder_best.engine")
         _, self.decoder_outputs, self.decoder_bindings = trt_utils.allocate_buffers(self.decoder_engine)
         for host_device_buffer in self.decoder_outputs:
             print(
@@ -324,7 +409,7 @@ class InpaintGenerator(BaseNetwork):
 
         # feature propagation module
         self.img_prop_module = BidirectionalPropagation(3, learnable=False)
-        self.feat_prop_module = BidirectionalPropagation(128, learnable=True)
+        self.feat_prop_module = BidirectionalPropagation(128, learnable=True, feat=True)
         
         
         depths = 8
@@ -365,17 +450,18 @@ class InpaintGenerator(BaseNetwork):
 
         # extracting features
         # [9, 5, 640, 360] -> [18, 5, 640, 360]
+
         # enc_feat = self.encoder(torch.cat([masked_frames.view(b * t, 3, ori_h, ori_w),
         #                                 masks_in.view(b * t, 1, ori_h, ori_w),
         #                                 masks_updated.view(b * t, 1, ori_h, ori_w)], dim=1))
-        
+
         enc_input = torch.cat([masked_frames.view(b * t, 3, ori_h, ori_w),
                                         masks_in.view(b * t, 1, ori_h, ori_w),
                                         masks_updated.view(b * t, 1, ori_h, ori_w)], dim=1)
         self.encoder_context.set_input_shape('input', enc_input.shape)
         trt_utils.do_inference_v2(self.encoder_context, bindings=[int(enc_input.data_ptr())] + self.encoder_bindings, outputs=self.encoder_outputs)
         enc_feat = trt_utils.ptr_to_tensor(self.encoder_outputs[0].device, self.encoder_outputs[0].nbytes, self.encoder_outputs[0].shape)[:b * t]
-
+                
         _, c, h, w = enc_feat.size()
         local_feat = enc_feat.view(b, t, c, h, w)[:, :l_t, ...]
         ref_feat = enc_feat.view(b, t, c, h, w)[:, l_t:, ...]
@@ -397,7 +483,9 @@ class InpaintGenerator(BaseNetwork):
 
 
         prop_mask_in = torch.cat([ds_mask_in_local, ds_mask_updated_local], dim=2)
-        _, _, local_feat, _ = self.feat_prop_module(local_feat, ds_flows_f, ds_flows_b, prop_mask_in, interpolation)
+        # local_feat shape: torch.Size([1, 6, 128, 160, 90]) ds_flows_f shape: torch.Size([1, 5, 2, 160, 90]) ds_flows_b shape: torch.Size([1, 5, 2, 160, 90]) prop_mask_in shape: torch.Size([1, 6, 2, 160, 90]) interpolation: bilinear
+        # local_feat shape: torch.Size([1, 11, 128, 160, 90]) ds_flows_f shape: torch.Size([1, 10, 2, 160, 90]) ds_flows_b shape: torch.Size([1, 10, 2, 160, 90]) prop_mask_in shape: torch.Size([1, 11, 2, 160, 90]) interpolation: bilinear
+        _, _, local_feat, _ = self.feat_prop_module(local_feat, ds_flows_f, ds_flows_b, prop_mask_in)
         enc_feat = torch.cat((local_feat, ref_feat), dim=1)
 
         trans_feat = self.ss(enc_feat.view(-1, c, h, w), b, fold_feat_size)
@@ -416,27 +504,42 @@ class InpaintGenerator(BaseNetwork):
         else:
             # decoder input shape: torch.Size([6, 128, 160, 90]) -> torch.Size([11, 128, 160, 90])
             # output = self.decoder(enc_feat[:, :l_t].view(-1, c, h, w))
+
             decoder_input = enc_feat[:, :l_t].view(-1, c, h, w)
-            
             self.decoder_context.set_input_shape('input', decoder_input.shape)
             trt_utils.do_inference_v2(self.decoder_context, bindings=[int(decoder_input.data_ptr())] + self.decoder_bindings, outputs=self.decoder_outputs)
             output = trt_utils.ptr_to_tensor(self.decoder_outputs[0].device, self.decoder_outputs[0].nbytes, self.decoder_outputs[0].shape)[:decoder_input.shape[0]]
-            
+                        
             output = torch.tanh(output).view(b, l_t, 3, ori_h, ori_w)
 
         return output
 
     def export_quantized_model(self):
+        deform_conv2d_onnx_exporter.register_deform_conv2d_onnx_op()
         encoder_input = torch.randn(18, 5, 640, 360).to(torch.half).cuda()
         decoder_input = torch.randn(11, 128, 160, 90).to(torch.half).cuda()
         
-        transformer_feat = torch.randn(1, 18, 54, 30, 512).to(torch.half).cuda()
-        transformer_mask = torch.randn(1, 11, 54, 30, 1).to(torch.half).cuda()
+        feat_back_deform_align_feat = torch.randn(1, 128, 160, 90).to(torch.half).cuda()
+        feat_back_deform_align_cond = torch.randn(1, 261, 160, 90).to(torch.half).cuda()
+        feat_back_deform_align_flow = torch.randn(1, 2, 160, 90).to(torch.half).cuda()
         
+        feat_forw_deform_align_feat = torch.randn(1, 128, 160, 90).to(torch.half).cuda()
+        feat_forw_deform_align_cond = torch.randn(1, 261, 160, 90).to(torch.half).cuda()
+        feat_forw_deform_align_flow = torch.randn(1, 2, 160, 90).to(torch.half).cuda()
         
-        onnx_program = torch.onnx.export(self.encoder, encoder_input, 'inpainter_encoder_quan.onnx', input_names=['input'], output_names=['ouput'], dynamic_axes={'input': {0: 'batch_size'}, 'output': {0: 'batch_size'}}, opset_version=20)
-        onnx_program = torch.onnx.export(self.decoder, decoder_input, 'inpainter_decoder_quan.onnx', input_names=['input'], output_names=['ouput'], dynamic_axes={'input': {0: 'batch_size'}, 'output': {0: 'batch_size'}}, opset_version=20)
-        onnx_program = torch.onnx.export(self.transformers, (transformer_feat, transformer_mask), 'inpainter_transformer_quan.onnx', input_names=['feat', 'mask'], output_names=['ouput'], dynamic_axes={'feat': {1: 'batch_size'}, 'mask': {1: 'batch_size'}, 'output': {1: 'batch_size'}}, opset_version=20)
+        feat_back_backbone_feat = torch.randn(1, 258, 160, 90).to(torch.half).cuda()
+        feat_forw_backbone_feat = torch.randn(1, 258, 160, 90).to(torch.half).cuda()
+        
+        feat_fuse_feat = torch.randn(11, 258, 160, 90).to(torch.half).cuda()
+        
+        onnx_program = torch.onnx.export(self.encoder, encoder_input, 'inpainter_encoder.onnx', input_names=['input'], output_names=['ouput'], dynamic_axes={'input': {0: 'batch_size'}, 'output': {0: 'batch_size'}}, opset_version=20)
+        onnx_program = torch.onnx.export(self.decoder, decoder_input, 'inpainter_decoder.onnx', input_names=['input'], output_names=['ouput'], dynamic_axes={'input': {0: 'batch_size'}, 'output': {0: 'batch_size'}}, opset_version=20)
+        onnx_program = torch.onnx.export(self.feat_prop_module.deform_align['backward_1'], (feat_back_deform_align_feat, feat_back_deform_align_cond, feat_back_deform_align_flow), 'inpainter_feat_back_deform_align.onnx', input_names=['feat', 'cond', 'flow'], output_names=['ouput'], opset_version=20)
+        onnx_program = torch.onnx.export(self.feat_prop_module.deform_align['forward_1'], (feat_forw_deform_align_feat, feat_forw_deform_align_cond, feat_forw_deform_align_flow), 'inpainter_feat_forw_deform_align.onnx', input_names=['feat', 'cond', 'flow'], output_names=['ouput'], opset_version=20)
+        onnx_program = torch.onnx.export(self.feat_prop_module.backbone['backward_1'], feat_back_backbone_feat, 'inpainter_feat_back_backbone.onnx', input_names=['feat'], output_names=['ouput'], opset_version=20)
+        onnx_program = torch.onnx.export(self.feat_prop_module.backbone['forward_1'], feat_forw_backbone_feat, 'inpainter_feat_forw_backbone.onnx', input_names=['feat'], output_names=['ouput'], opset_version=20)
+        onnx_program = torch.onnx.export(self.feat_prop_module.fuse, feat_fuse_feat, 'inpainter_feat_fuse.onnx', input_names=['feat'], output_names=['ouput'], dynamic_axes={'feat': {0: 'batch_size'}, 'output': {0: 'batch_size'}}, opset_version=20)
+        # onnx_program = torch.onnx.export(self.transformers, (transformer_feat, transformer_mask), 'inpainter_transformer_quan.onnx', input_names=['feat', 'mask'], output_names=['ouput'], dynamic_axes={'feat': {1: 'batch_size'}, 'mask': {1: 'batch_size'}, 'output': {1: 'batch_size'}}, opset_version=20)
 
 # ######################################################################
 #  Discriminator for Temporal Patch GAN
