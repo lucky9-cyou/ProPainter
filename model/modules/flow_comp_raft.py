@@ -43,7 +43,6 @@ class RAFT_bi(nn.Module):
 
     def forward(self, gt_local_frames, iters=20):
         b, l_t, c, h, w = gt_local_frames.size()
-        print("raft_bi input size:", gt_local_frames.shape)
 
         with torch.no_grad():
             gtlf_1 = gt_local_frames[:, :-1, :, :, :].reshape(-1, c, h, w)

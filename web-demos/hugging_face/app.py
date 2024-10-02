@@ -338,7 +338,8 @@ def inpaint_video(video_state, resize_ratio_number, dilate_radius_number, raft_i
         if i in inpaint_mask_numbers:
             continue
         inpaint_masks[inpaint_masks==i] = 0
-        
+    
+    inpaint_time_start = time.time_ns()    
     # inpaint for videos
     inpainted_frames = model.baseinpainter.inpaint(frames, 
                                                    inpaint_masks, 
@@ -348,6 +349,8 @@ def inpaint_video(video_state, resize_ratio_number, dilate_radius_number, raft_i
                                                    subvideo_length=subvideo_length_number, 
                                                    neighbor_length=neighbor_length_number, 
                                                    ref_stride=ref_stride_number)   # numpy array, T, H, W, 3
+    inpaint_time_end = time.time_ns()
+    print(f"Inpainting time: {(inpaint_time_end - inpaint_time_start) / 1e6} ms")
 
     video_output = generate_video_from_frames(inpainted_frames, output_path="./result/inpaint/{}".format(video_state["video_name"]), fps=fps) # import video_input to name the output video
 

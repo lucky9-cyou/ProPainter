@@ -14,6 +14,7 @@ from model.modules.flow_comp_raft import RAFT_bi
 from model.recurrent_flow_completion import RecurrentFlowCompleteNet
 from model.propainter import InpaintGenerator
 from core.utils import to_tensors
+import time
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -231,6 +232,7 @@ class ProInpainter:
 			else:
 				short_clip_len = 2
 			
+			raft_time_start = time.time_ns()
 			# use fp32 for RAFT
 			if frames.size(1) > short_clip_len:
 				gt_flows_f_list, gt_flows_b_list = [], []
@@ -256,6 +258,10 @@ class ProInpainter:
 				frames, flow_masks, masks_dilated = frames.half(), flow_masks.half(), masks_dilated.half()
 				gt_flows_bi = (gt_flows_bi[0].half(), gt_flows_bi[1].half())
 
+			raft_time_end = time.time_ns()
+			print(f"RAFT time: {(raft_time_end - raft_time_start) / 1e6} ms")
+
+			complete_flow_time_start = time.time_ns()
 			# ---- complete flow ----
 			flow_length = gt_flows_bi[0].size(1)
 			if flow_length > subvideo_length:
@@ -285,7 +291,10 @@ class ProInpainter:
 				pred_flows_bi, _ = self.fix_flow_complete.forward_bidirect_flow(gt_flows_bi, flow_masks)
 				pred_flows_bi = self.fix_flow_complete.combine_flow(gt_flows_bi, pred_flows_bi, flow_masks)
 				torch.cuda.empty_cache()
-				
+			complete_flow_time_end = time.time_ns()
+			print(f"Complete flow time: {(complete_flow_time_end - complete_flow_time_start) / 1e6} ms")
+			
+			image_propagation_time_start = time.time_ns()
 			# ---- image propagation ----
 			masked_frames = frames * (1 - masks_dilated)
 			subvideo_length_img_prop = min(100, subvideo_length) # ensure a minimum of 100 frames for image propagation
@@ -320,6 +329,8 @@ class ProInpainter:
 				updated_frames = frames * (1 - masks_dilated) + prop_imgs.view(b, t, 3, h, w) * masks_dilated
 				updated_masks = updated_local_masks.view(b, t, 1, h, w)
 				torch.cuda.empty_cache()
+			image_propagation_time_end = time.time_ns()
+			print(f"Image propagation time: {(image_propagation_time_end - image_propagation_time_start) / 1e6} ms")
 	
 		ori_frames = frames_inp
 		comp_frames = [None] * video_length
@@ -330,6 +341,7 @@ class ProInpainter:
 		else:
 			ref_num = -1
 		
+		feature_propagation_time_start = time.time_ns()
 		# ---- feature propagation + transformer ----
 		for f in tqdm(range(0, video_length, neighbor_stride)):
 			neighbor_ids = [
@@ -367,6 +379,8 @@ class ProInpainter:
 					comp_frames[idx] = comp_frames[idx].astype(np.uint8)
 			
 			torch.cuda.empty_cache()
+		feature_propagation_time_end = time.time_ns()
+		print(f"Feature propagation time: {(feature_propagation_time_end - feature_propagation_time_start) / 1e6} ms")
 
 		# need to return numpy array, T, H, W, 3
 		comp_frames = [cv2.resize(f, out_size) for f in comp_frames]
