@@ -54,7 +54,7 @@ cd web-demos/hugging_face/
 python3 app.py
 ```
 
-The Gradio application will be available at 'http://127.0.0.1:7860/' by VSCode port forwarding or 'http://101.126.90.71:50183'.
+The Gradio application will be available at 'http://127.0.0.1:6006/' by VSCode port forwarding or 'http://101.126.90.71:50183'.
 
 = Task 2: Invoke the Gradio Application
 
