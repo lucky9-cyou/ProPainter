@@ -108,6 +108,7 @@ Optimization results:
 )
 
 == Feature Propagation and Transformer Optimization
+=== Model Inference Optimization
 The feature propagation and transformer are the most time-consuming parts of the model. It is composed of `encoder`, `decoder`, `softsplit`, `softcomp`, `feat_prop` and `transformer`. The following is the optimization strategy for each part:
 - Use #link("https://github.com/NVIDIA/TensorRT-Model-Optimizer")[TensorRT Model Optimizer] to convert the PyTorch model to ONNX format.
 - Using tensorrt `best` mode to optimization.
@@ -132,13 +133,40 @@ Some commands:
 
 Optimization results:
 #table(
-  columns: (auto, auto, auto, auto),
+  columns: (auto, auto, auto, auto, auto),
   inset: 10pt,
   align: horizon,
   table.header(
-    [], [*Torch fp32*], [*TensorRT Encoder best*], [*TensorRT Feature best*], [*Speedup*]
+    [], [*Torch fp32 + fp16*], [*TensorRT Encoder best*], [*TensorRT Feature best*], [*Speedup*]
   ),
   [*Time*], [86457.671271 ms], [79078.691251 ms], [78972.896806], [1.09]
 )
 
 *NOTE:* #link("https://github.com/NVIDIA/TensorRT-Model-Optimizer")[TensorRT Model Optimizer] will cause loss of accuracy for encoder and decoder. Most computation is in the `transformer` part, but the `transformer` part very complex and hard to optimize. It need more time to optimize.
+
+=== Multi-thread Optimization
+We can use multi-thread to optimize the inference feat propagation and transformer.
+
+Optimization results:
+#table(
+  columns: (auto, auto, auto, auto),
+  inset: 10pt,
+  align: horizon,
+  table.header(
+    [], [*Torch fp32 + fp16*], [*Multi Thread*], [*Speedup*]
+  ),
+  [*Time*], [86457.671271 ms], [68060.301863 ms], [1.27],
+)
+
+== Inpainting Optimization
+
+Optimization results:
+#table(
+  columns: (auto, auto, auto, auto),
+  inset: 10pt,
+  align: horizon,
+  table.header(
+    [], [*Torch fp32 + fp16*], [*Final*], [*Speedup*]
+  ),
+  [*Time*], [86457.671271 ms], [122179.337429 ms], [1.27],
+)

@@ -19,6 +19,7 @@ import modelopt.torch.quantization as mtq
 
 import warnings
 warnings.filterwarnings("ignore")
+import threading
 
 
 def imwrite(img, file_path, params=None, auto_mkdir=True):
@@ -173,6 +174,7 @@ class ProInpainter:
 		# set up RAFT and flow competition model
 		##############################################
 		self.fix_raft = RAFT_bi(raft_checkpoint, self.device)
+		self.fox_raft1 = RAFT_bi(raft_checkpoint, self.device)
 
 		self.fix_flow_complete = RecurrentFlowCompleteNet(flow_completion_checkpoint)
 		for p in self.fix_flow_complete.parameters():
@@ -184,14 +186,17 @@ class ProInpainter:
 		# set up ProPainter model
 		##############################################
 		self.model = InpaintGenerator(model_path=propainter_checkpoint).to(self.device)
-
 		self.model.eval()
+  
+		self.model1 = InpaintGenerator(model_path=propainter_checkpoint).to(self.device)
+		self.model1.eval()
 
 		if self.use_half:
 			self.fix_flow_complete = self.fix_flow_complete.half()
 			self.model = self.model.half()
+			self.model1 = self.model1.half()
    
-		self.model.export_quantized_model()
+		# self.model.export_quantized_model()
 
 	def inpaint(self, npframes, masks, ratio=1.0, dilate_radius=4, raft_iter=20, subvideo_length=80, neighbor_length=10, ref_stride=10):
 		"""
@@ -357,42 +362,56 @@ class ProInpainter:
   		# ---- feature propagation + transformer ----
 		# config = mtq.FP8_DEFAULT_CFG
 		# def inpainter_forard(model):
-		for f in tqdm(range(0, video_length, neighbor_stride)):
-			neighbor_ids = [
-				i for i in range(max(0, f - neighbor_stride),
-									min(video_length, f + neighbor_stride + 1))
-			]
-			ref_ids = get_ref_index(f, neighbor_ids, video_length, ref_stride, ref_num)
-			selected_imgs = updated_frames[:, neighbor_ids + ref_ids, :, :, :]
-			selected_masks = masks_dilated[:, neighbor_ids + ref_ids, :, :, :]
-			selected_update_masks = updated_masks[:, neighbor_ids + ref_ids, :, :, :]
-			selected_pred_flows_bi = (pred_flows_bi[0][:, neighbor_ids[:-1], :, :, :], pred_flows_bi[1][:, neighbor_ids[:-1], :, :, :])
+		for f in tqdm(range(0, video_length, neighbor_stride * 2)):
 			
-			with torch.no_grad():
-				# 1.0 indicates mask
-				l_t = len(neighbor_ids)
+			def feature_propagation_thread(index, model):
+				if index >= video_length:
+					return
+				neighbor_ids = [
+					i for i in range(max(0, index - neighbor_stride),
+										min(video_length, index + neighbor_stride + 1))
+				]
+				ref_ids = get_ref_index(index, neighbor_ids, video_length, ref_stride, ref_num)
+				selected_imgs = updated_frames[:, neighbor_ids + ref_ids, :, :, :]
+				selected_masks = masks_dilated[:, neighbor_ids + ref_ids, :, :, :]
+				selected_update_masks = updated_masks[:, neighbor_ids + ref_ids, :, :, :]
+				selected_pred_flows_bi = (pred_flows_bi[0][:, neighbor_ids[:-1], :, :, :], pred_flows_bi[1][:, neighbor_ids[:-1], :, :, :])
 				
-				# pred_img = selected_imgs # results of image propagation
-				pred_img = self.model(selected_imgs, selected_pred_flows_bi, selected_masks, selected_update_masks, l_t)
-				
-				pred_img = pred_img.view(-1, 3, h, w)
+				with torch.no_grad():
+					# 1.0 indicates mask
+					l_t = len(neighbor_ids)
+					
+					# pred_img = selected_imgs # results of image propagation
+					pred_img = model(selected_imgs, selected_pred_flows_bi, selected_masks, selected_update_masks, l_t)
+					
+					pred_img = pred_img.view(-1, 3, h, w)
 
-				pred_img = (pred_img + 1) / 2
-				pred_img = pred_img.cpu().permute(0, 2, 3, 1).numpy() * 255
-				binary_masks = masks_dilated[0, neighbor_ids, :, :, :].cpu().permute(
-					0, 2, 3, 1).numpy().astype(np.uint8)
-				for i in range(len(neighbor_ids)):
-					idx = neighbor_ids[i]
-					img = np.array(pred_img[i]).astype(np.uint8) * binary_masks[i] \
-						+ ori_frames[idx] * (1 - binary_masks[i])
-					if comp_frames[idx] is None:
-						comp_frames[idx] = img
-					else: 
-						comp_frames[idx] = comp_frames[idx].astype(np.float32) * 0.5 + img.astype(np.float32) * 0.5
-						
-					comp_frames[idx] = comp_frames[idx].astype(np.uint8)
-			
+					pred_img = (pred_img + 1) / 2
+					pred_img = pred_img.cpu().permute(0, 2, 3, 1).numpy() * 255
+					binary_masks = masks_dilated[0, neighbor_ids, :, :, :].cpu().permute(
+						0, 2, 3, 1).numpy().astype(np.uint8)
+					for i in range(len(neighbor_ids)):
+						idx = neighbor_ids[i]
+						img = np.array(pred_img[i]).astype(np.uint8) * binary_masks[i] \
+							+ ori_frames[idx] * (1 - binary_masks[i])
+						if comp_frames[idx] is None:
+							comp_frames[idx] = img
+						else: 
+							comp_frames[idx] = comp_frames[idx].astype(np.float32) * 0.5 + img.astype(np.float32) * 0.5
+							
+						comp_frames[idx] = comp_frames[idx].astype(np.uint8)
+				
+			thread = threading.Thread(target=feature_propagation_thread, args=(f, self.model))
+			thread1 = threading.Thread(target=feature_propagation_thread, args=(f + neighbor_stride, self.model1))
+   
+			thread.start()
+			thread1.start()
+
+			thread.join()
+			thread1.join()
+
 			torch.cuda.empty_cache()
+
 		# self.model = mtq.quantize(self.model, config, inpainter_forard)
 		# mtq.print_quant_summary(self.model)
 		# self.model.export_quantized_model()
