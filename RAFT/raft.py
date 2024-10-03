@@ -51,21 +51,10 @@ class RAFT(nn.Module):
             self.update_block = SmallUpdateBlock(self.args, hidden_dim=hdim)
 
         else:
-            fnet_input = torch.randn(24, 3, 640, 360)
-            cnet_input = torch.randn(12, 3, 640, 360)
-            # net.shape, inp.shape, corr.shape, flow.shape
-            update_net = torch.randn(12, 128, 80, 45)
-            update_inp = torch.randn(12, 128, 80, 45)
-            update_corr = torch.randn(12, 324, 80, 45)
-            update_flow = torch.randn(12, 2, 80, 45)
-            
             self.fnet = BasicEncoder(output_dim=256, norm_fn='instance', dropout=args.dropout)
             self.cnet = BasicEncoder(output_dim=hdim+cdim, norm_fn='batch', dropout=args.dropout)
             self.update_block = BasicUpdateBlock(self.args, hidden_dim=hdim)
-            onnx_program = torch.onnx.export(self.fnet, fnet_input, 'raft_fnet.onnx', input_names=["x"], output_names=["fmap"], dynamic_axes={'x': {0: 'batch_size'}, 'fmap': {0: 'batch_size'}}, opset_version=20)
-            onnx_program = torch.onnx.export(self.cnet, cnet_input, 'raft_cnet.onnx', input_names=["x"], output_names=["cnet"], dynamic_axes={'x': {0: 'batch_size'}, 'cnet': {0: 'batch_size'}}, opset_version=20)
-            onnx_program = torch.onnx.export(self.update_block, (update_net, update_inp, update_corr, update_flow), 'raft_update_block.onnx', input_names=["net", "inp", "corr", "flow"], output_names=["net", "up_mask", "delta_flow"], dynamic_axes={'net': {0: 'batch_size'}, 'inp': {0: 'batch_size'}, 'corr': {0: 'batch_size'}, 'flow': {0: 'batch_size'}, 'up_mask': {0: 'batch_size'}, 'delta_flow': {0: 'batch_size'}}, opset_version=20)
-
+            
 
     def freeze_bn(self):
         for m in self.modules():
