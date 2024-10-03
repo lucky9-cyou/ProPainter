@@ -168,5 +168,5 @@ Optimization results:
   table.header(
     [], [*Torch fp32 + fp16*], [*Final*], [*Speedup*]
   ),
-  [*Time*], [86457.671271 ms], [122179.337429 ms], [1.27],
+  [*Time*], [185057.978153 ms], [122179.337429 ms], [1.51],
 )

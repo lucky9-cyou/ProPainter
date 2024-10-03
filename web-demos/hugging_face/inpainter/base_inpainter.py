@@ -174,7 +174,6 @@ class ProInpainter:
 		# set up RAFT and flow competition model
 		##############################################
 		self.fix_raft = RAFT_bi(raft_checkpoint, self.device)
-		self.fox_raft1 = RAFT_bi(raft_checkpoint, self.device)
 
 		self.fix_flow_complete = RecurrentFlowCompleteNet(flow_completion_checkpoint)
 		for p in self.fix_flow_complete.parameters():
