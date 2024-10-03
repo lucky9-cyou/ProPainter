@@ -38,10 +38,16 @@ dpkg -i nv-tensorrt-local-repo-ubuntu2204-10.5.0-cuda-11.8_1.0-1_amd64.deb
 sudo cp /var/nv-tensorrt-local-repo-ubuntu2204-10.5.0-cuda-11.8/nv-tensorrt-local-EE22FB8A-keyring.gpg /usr/share/keyrings/
 sudo apt update
 sudo apt install tensorrt
-python3 -m pip install --upgrade tensorrt-cu11
+python3 -m pip install --upgrade tensorrt-cu11 --extra-index-url https://pypi.nvidia.com
 
 # install python dependencies
 pip3 install -r requirements.txt
+
+# install tensorrt model optimizer and some cuda dependencies
+pip install cupy-cuda11x
+pip install cuda-python
+pip install "nvidia-modelopt[all]~=0.17.0" --extra-index-url https://pypi.nvidia.com
+
 
 # install web dependences
 pip install -r web-demos/hugging_face/requirements.txt
@@ -77,7 +83,7 @@ All the time is based on the `sample.mp4` video. The video resolution is 640x360
   inset: 10pt,
   align: horizon,
   table.header(
-    [], [*VOS tracking*], [*Raft time*], [*Complete flow time*], [*Image propagation*], [*Feature Propagation*]
+    [], [*VOS tracking*], [*Raft time*], [*Complete flow time fp16*], [*Image propagation fp16*], [*Feature Propagation fp16*]
   ),
   [*Time*], [24090.20447 ms], [58275.726223 ms], [6067.899583 ms], [1963.095136 ms], [86457.671271 ms]
 )
@@ -162,11 +168,33 @@ Optimization results:
 
 Optimization results:
 #table(
-  columns: (auto, auto, auto, auto),
+  columns: (auto, auto, auto, auto, auto),
   inset: 10pt,
   align: horizon,
   table.header(
-    [], [*Torch fp32 + fp16*], [*Final*], [*Speedup*]
+    [], [*Torch fp32*], [*Torch fp32 + fp16*], [*Final*], [*Speedup*]
   ),
-  [*Time*], [185057.978153 ms], [122179.337429 ms], [1.51],
+  [*Time*], [227701.289064 ms], [185057.978153 ms], [122179.337429 ms], [1.86],
 )
+
+== How to running
+Normal branch is `main` branch, you can run the following command to start the Gradio application:
+```bash
+conda activate propainter
+cd /root/ProPainter/web-demos/hugging_face/
+python3 app.py
+```
+
+Optimization branch is `feat/tensorrt-model-opt` branch, you can run the following command to start the Gradio application:
+```bash
+conda activate propainter
+cd /root/ProPainter/web-demos/hugging_face/
+python3 app.py
+```
+
+Run the following command to invoke the Gradio application:
+```bash
+conda activate propainter
+cd /root/ProPainter/
+python client.py --video inputs/sample/sample.mp4 --pose weights/vitpose.pt
+```
