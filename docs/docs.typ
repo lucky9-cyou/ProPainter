@@ -102,6 +102,15 @@ Some commands:
 /usr/src/tensorrt/bin/trtexec --onnx=raft_update_block_quan.onnx --saveEngine=raft_update_block_quan_best.engine --best --verbose  --minShapes='net_in:1x128x80x45','inp:1x128x80x45','corr:1x324x80x45','flow:1x2x80x45' --optShapes='net_in:12x128x80x45','inp:12x128x80x45','corr:12x324x80x45','flow:12x2x80x45' --maxShapes='net_in:12x128x80x45','inp:12x128x80x45','corr:12x324x80x45','flow:12x2x80x45'  --dumpOptimizationProfile --builderOptimizationLevel=4 --useSpinWait --sparsity=enable > raft_update_block_quan_best.log
 ```
 
+Some commands for multi resolution:
+```bash
+/usr/src/tensorrt/bin/trtexec --onnx=raft_fnet_quan_res.onnx --saveEngine=raft_fnet_quan_res_best.engine --best --verbose  --minShapes='x:2x3x180x180' --optShapes='x:24x3x640x360' --maxShapes='x:24x3x1280x1280'  --dumpOptimizationProfile --builderOptimizationLevel=4 --useSpinWait --sparsity=enable > raft_fnet_quan_res_best.log
+
+/usr/src/tensorrt/bin/trtexec --onnx=raft_cnet_quan_res.onnx --saveEngine=raft_cnet_quan_res_best.engine --best --verbose  --minShapes='x:1x3x180x180' --optShapes='x:12x3x640x360' --maxShapes='x:12x3x1280x1280'  --dumpOptimizationProfile --builderOptimizationLevel=4 --useSpinWait --sparsity=enable > raft_cnet_quan_res_best.log
+
+/usr/src/tensorrt/bin/trtexec --onnx=raft_update_block_quan_res.onnx --saveEngine=raft_update_block_quan_res_best.engine --best --verbose  --minShapes='net_in:1x128x22x22','inp:1x128x22x22','corr:1x324x22x22','flow:1x2x22x22' --optShapes='net_in:12x128x80x45','inp:12x128x80x45','corr:12x324x80x45','flow:12x2x80x45' --maxShapes='net_in:12x128x160x160','inp:12x128x160x160','corr:12x324x160x160','flow:12x2x160x160'  --dumpOptimizationProfile --builderOptimizationLevel=4 --useSpinWait --sparsity=enable > raft_update_block_quan_res_best.log
+```
+
 Optimization results:
 #table(
   columns: (auto, auto, auto, auto),

@@ -71,23 +71,23 @@ class FusionFeedForward(nn.Module):
         self.t2t_params = t2t_params
         self.kernel_shape = reduce((lambda x, y: x * y), t2t_params['kernel_size']) # 49
 
-    def forward(self, x):
+    def forward(self, x, output_size):
         n_vecs = 1
         for i, d in enumerate(self.t2t_params['kernel_size']):
-            n_vecs *= int(((160, 90)[i] + 2 * self.t2t_params['padding'][i] -
+            n_vecs *= int((output_size[i] + 2 * self.t2t_params['padding'][i] -
                            (d - 1) - 1) / self.t2t_params['stride'][i] + 1)
 
         x = self.fc1(x)
         b, n, c = x.size()
         normalizer = x.new_ones(b, n, self.kernel_shape).view(-1, n_vecs, self.kernel_shape).permute(0, 2, 1)
         normalizer = F.fold(normalizer,
-                            output_size=(160, 90),
+                            output_size=output_size,
                             kernel_size=self.t2t_params['kernel_size'],
                             padding=self.t2t_params['padding'],
                             stride=self.t2t_params['stride'])
 
         x = F.fold(x.view(-1, n_vecs, c).permute(0, 2, 1),
-                   output_size=(160, 90),
+                   output_size=output_size,
                    kernel_size=self.t2t_params['kernel_size'],
                    padding=self.t2t_params['padding'],
                    stride=self.t2t_params['stride'])
@@ -223,7 +223,8 @@ class SparseWindowAttention(nn.Module):
         # [b, n_wh*n_ww, n_head, t, w_h*w_w, c_head]
         out = torch.zeros_like(win_q)
         l_t = mask.size(1)
-        mask = self.max_pool(mask.view(1, b * l_t, new_h, new_w))
+
+        mask = self.max_pool(mask.view(b * l_t, new_h, new_w))
         mask = mask.view(b, l_t, n_wh*n_ww)
         mask = torch.sum(mask, dim=1) # [b, n_wh*n_ww]
         for i in range(win_q.shape[0]):
@@ -249,8 +250,8 @@ class SparseWindowAttention(nn.Module):
                 att_t = (win_q_t @ win_k_t.transpose(-2, -1)) * (1.0 / math.sqrt(win_q_t.size(-1)))
                 att_t = F.softmax(att_t, dim=-1)
                 att_t = self.attn_drop(att_t)
-                y_t = att_t @ win_v_t
-                                
+                y_t = att_t @ win_v_t 
+                
                 out[i, mask_ind_i] = y_t.view(-1, self.n_head, t, w_h*w_w, c_head)
 
             ### For unmasked windows
@@ -290,7 +291,7 @@ class TemporalSparseTransformer(nn.Module):
         self.norm2 = norm_layer(dim)
         self.mlp = FusionFeedForward(dim, t2t_params=t2t_params)
 
-    def forward(self, x, mask=None, T_ind=None):
+    def forward(self, x, fold_x_size, mask=None, T_ind=None):
         """
         Args:
             x: image tokens, shape [B T H W C]
@@ -308,7 +309,7 @@ class TemporalSparseTransformer(nn.Module):
         # FFN
         x = shortcut + att_x
         y = self.norm2(x)
-        x = x + self.mlp(y.view(B, T * H * W, C)).view(B, T, H, W, C)
+        x = x + self.mlp(y.view(B, T * H * W, C), fold_x_size).view(B, T, H, W, C)
 
         return x
 
@@ -324,7 +325,7 @@ class TemporalSparseTransformerBlock(nn.Module):
         self.transformer = nn.Sequential(*blocks)
         self.depths = depths
 
-    def forward(self, x, l_mask=None):
+    def forward(self, x, fold_x_size, l_mask=None, t_dilation=2):
         """
         Args:
             x: image tokens, shape [B T H W C]
@@ -333,11 +334,11 @@ class TemporalSparseTransformerBlock(nn.Module):
         Returns:
             out_tokens: shape [B T H W C]
         """
-        assert self.depths % 2 == 0, 'wrong t_dilation input.'
+        assert self.depths % t_dilation == 0, 'wrong t_dilation input.'
         T = x.size(1)
-        T_ind = [torch.arange(i, T, 2) for i in range(2)] * (self.depths // 2)
+        T_ind = [torch.arange(i, T, t_dilation) for i in range(t_dilation)] * (self.depths // t_dilation)
 
         for i in range(0, self.depths):
-            x = self.transformer[i](x, l_mask, T_ind[i])
+            x = self.transformer[i](x, fold_x_size, l_mask, T_ind[i])
 
         return x
