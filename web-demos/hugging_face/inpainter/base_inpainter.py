@@ -207,10 +207,10 @@ class ProInpainter:
         if self.use_half:
             self.fix_flow_complete = self.fix_flow_complete.half()
             self.model = self.model.half()
-            self.model1 = self.model1.half()
+
         # self.fix_raft.export_quantized_model()
 
-        self.model.export_quantized_model()
+        # self.model.export_quantized_model()
 
     def inpaint(
         self,

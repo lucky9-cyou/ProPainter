@@ -87,7 +87,7 @@ class DeviceMem:
         cuda_call(cudart.cudaFree(self.device))
 
 
-def allocate_buffers(engine: trt.ICudaEngine, profile_idx: Optional[int] = None):
+def allocate_buffers(engine: trt.ICudaEngine, shapes: dict):
     inputs = []
     outputs = []
     bindings = []
@@ -99,16 +99,8 @@ def allocate_buffers(engine: trt.ICudaEngine, profile_idx: Optional[int] = None)
         if engine.get_tensor_mode(binding) == trt.TensorIOMode.INPUT:
             continue
 
-        shape = engine.get_tensor_shape(binding)
-        shape_valid = np.all([s >= 0 for s in shape])
-
-        if not shape_valid and profile_idx is None:
-            # hard code the shape to 24 for now
-            shape[0] = 18
-            print(
-                f"Binding {binding} has dynamic shape, "
-                + "but no profile was specified."
-            )
+        shape = shapes[binding]
+        print(f"Binding: {binding}, Shape: {shape}")
         size = trt.volume(shape)
 
         dtype = np.dtype(trt.nptype(engine.get_tensor_dtype(binding)))
@@ -175,7 +167,8 @@ def do_inference_v2(context, bindings, outputs):
 
 
 def ptr_to_tensor(device_ptr: int, nbytes: int, shape: tuple):
-    mem = cp.cuda.UnownedMemory(device_ptr, nbytes, owner=None)
+    new_nbytes = prod(shape) * 2
+    mem = cp.cuda.UnownedMemory(device_ptr, new_nbytes, owner=None)
     memptr = cp.cuda.MemoryPointer(mem, offset=0)
     arr = cp.ndarray(shape, dtype=cp.float16, memptr=memptr)
     return torch.as_tensor(arr, device="cuda")

@@ -103,19 +103,18 @@ class BidirectionalPropagation(nn.Module):
                     channel, channel, 3, padding=1, deform_groups=16
                 )
 
-                self.backbone[module] = nn.Sequential(
-                    nn.Conv2d(2 * channel + 2, channel, 3, 1, 1),
-                    nn.LeakyReLU(negative_slope=0.2, inplace=True),
-                    nn.Conv2d(channel, channel, 3, 1, 1),
-                )
+                # self.backbone[module] = nn.Sequential(
+                #     nn.Conv2d(2 * channel + 2, channel, 3, 1, 1),
+                #     nn.LeakyReLU(negative_slope=0.2, inplace=True),
+                #     nn.Conv2d(channel, channel, 3, 1, 1),
+                # )
 
-            self.fuse = nn.Sequential(
-                nn.Conv2d(2 * channel + 2, channel, 3, 1, 1),
-                nn.LeakyReLU(negative_slope=0.2, inplace=True),
-                nn.Conv2d(channel, channel, 3, 1, 1),
-            )
+            # self.fuse = nn.Sequential(
+            #     nn.Conv2d(2 * channel + 2, channel, 3, 1, 1),
+            #     nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            #     nn.Conv2d(channel, channel, 3, 1, 1),
+            # )
         if feat:
-            pass
             # self.deform_align_back = trt_utils.load_engine("/root/ProPainter/weights/inpainter_feat_back_deform_align_best.engine")
             # _, self.deform_align_back_outputs, self.deform_align_back_bindings = trt_utils.allocate_buffers(self.deform_align_back)
             # for host_device_buffer in self.deform_align_back_outputs:
@@ -140,34 +139,48 @@ class BidirectionalPropagation(nn.Module):
             # self.deform_align_forw_context.set_input_shape('cond', [1, 261, 160, 90])
             # self.deform_align_forw_context.set_input_shape('flow', [1, 2, 160, 90])
 
-            # self.backbone_back = trt_utils.load_engine("/root/ProPainter/weights/inpainter_feat_back_backbone_best.engine")
-            # _, self.backbone_back_outputs, self.backbone_back_bindings = trt_utils.allocate_buffers(self.backbone_back)
-            # for host_device_buffer in self.backbone_back_outputs:
-            #     print(
-            #             f"Tensor Name: {host_device_buffer.name} Shape: {host_device_buffer.shape} "
-            #             f"Data Type: {host_device_buffer.dtype} Data Format: {host_device_buffer.format}"
-            #     )
-            # self.backbone_back_context = self.backbone_back.create_execution_context()
-            # self.backbone_back_context.set_input_shape('feat', [1, 258, 160, 90])
+            self.backbone_back = trt_utils.load_engine(
+                "/root/ProPainter/weights/inpainter_feat_back_backbone_res_best.engine"
+            )
+            _, self.backbone_back_outputs, self.backbone_back_bindings = (
+                trt_utils.allocate_buffers(
+                    self.backbone_back, shapes={"ouput": [1, 258, 320, 320]}
+                )
+            )
+            for host_device_buffer in self.backbone_back_outputs:
+                print(
+                    f"Tensor Name: {host_device_buffer.name} Shape: {host_device_buffer.shape} "
+                    f"Data Type: {host_device_buffer.dtype} Data Format: {host_device_buffer.format}"
+                )
+            self.backbone_back_context = self.backbone_back.create_execution_context()
 
-            # self.backbone_forw = trt_utils.load_engine("/root/ProPainter/weights/inpainter_feat_forw_backbone_best.engine")
-            # _, self.backbone_forw_outputs, self.backbone_forw_bindings = trt_utils.allocate_buffers(self.backbone_forw)
-            # for host_device_buffer in self.backbone_forw_outputs:
-            #     print(
-            #             f"Tensor Name: {host_device_buffer.name} Shape: {host_device_buffer.shape} "
-            #             f"Data Type: {host_device_buffer.dtype} Data Format: {host_device_buffer.format}"
-            #     )
-            # self.backbone_forw_context = self.backbone_forw.create_execution_context()
-            # self.backbone_forw_context.set_input_shape('feat', [1, 258, 160, 90])
+            self.backbone_forw = trt_utils.load_engine(
+                "/root/ProPainter/weights/inpainter_feat_forw_backbone_res_best.engine"
+            )
+            _, self.backbone_forw_outputs, self.backbone_forw_bindings = (
+                trt_utils.allocate_buffers(
+                    self.backbone_forw, shapes={"ouput": [1, 258, 320, 320]}
+                )
+            )
+            for host_device_buffer in self.backbone_forw_outputs:
+                print(
+                    f"Tensor Name: {host_device_buffer.name} Shape: {host_device_buffer.shape} "
+                    f"Data Type: {host_device_buffer.dtype} Data Format: {host_device_buffer.format}"
+                )
+            self.backbone_forw_context = self.backbone_forw.create_execution_context()
 
-            # self.fuse_ = trt_utils.load_engine("/root/ProPainter/weights/inpainter_feat_fuse_best.engine")
-            # _, self.fuse_outputs, self.fuse_bindings = trt_utils.allocate_buffers(self.fuse_)
-            # for host_device_buffer in self.fuse_outputs:
-            #     print(
-            #             f"Tensor Name: {host_device_buffer.name} Shape: {host_device_buffer.shape} "
-            #             f"Data Type: {host_device_buffer.dtype} Data Format: {host_device_buffer.format}"
-            #     )
-            # self.fuse_context = self.fuse_.create_execution_context()
+            self.fuse_ = trt_utils.load_engine(
+                "/root/ProPainter/weights/inpainter_feat_fuse_res_best.engine"
+            )
+            _, self.fuse_outputs, self.fuse_bindings = trt_utils.allocate_buffers(
+                self.fuse_, shapes={"ouput": [11, 258, 320, 320]}
+            )
+            for host_device_buffer in self.fuse_outputs:
+                print(
+                    f"Tensor Name: {host_device_buffer.name} Shape: {host_device_buffer.shape} "
+                    f"Data Type: {host_device_buffer.dtype} Data Format: {host_device_buffer.format}"
+                )
+            self.fuse_context = self.fuse_.create_execution_context()
 
     def binary_mask(self, mask, th=0.1):
         mask[mask > th] = 1
@@ -273,13 +286,45 @@ class BidirectionalPropagation(nn.Module):
 
                     # forward_1 feat shape: torch.Size([1, 258, 160, 90])
                     # backward_1 feat shape: torch.Size([1, 258, 160, 90])
-                    feat_prop = feat_prop + self.backbone[module_name](feat)
-                    # if module_name == 'backward_1':
-                    #     trt_utils.do_inference_v2(self.backbone_back_context, bindings=[int(feat.data_ptr())] + self.backbone_back_bindings, outputs=self.backbone_back_outputs)
-                    #     feat_prop = feat_prop + trt_utils.ptr_to_tensor(self.backbone_back_outputs[0].device, self.backbone_back_outputs[0].nbytes, self.backbone_back_outputs[0].shape)
-                    # else:
-                    #     trt_utils.do_inference_v2(self.backbone_forw_context, bindings=[int(feat.data_ptr())] + self.backbone_forw_bindings, outputs=self.backbone_forw_outputs)
-                    #     feat_prop = feat_prop + trt_utils.ptr_to_tensor(self.backbone_forw_outputs[0].device, self.backbone_forw_outputs[0].nbytes, self.backbone_forw_outputs[0].shape)
+                    # feat_prop = feat_prop + self.backbone[module_name](feat)
+                    if module_name == "backward_1":
+                        self.backbone_back_context.set_input_shape("feat", feat.shape)
+                        trt_utils.do_inference_v2(
+                            self.backbone_back_context,
+                            bindings=[int(feat.data_ptr())]
+                            + self.backbone_back_bindings,
+                            outputs=self.backbone_back_outputs,
+                        )
+                        output_shape = [
+                            feat.shape[0],
+                            128,
+                            feat.shape[2],
+                            feat.shape[3],
+                        ]
+                        feat_prop = feat_prop + trt_utils.ptr_to_tensor(
+                            self.backbone_back_outputs[0].device,
+                            self.backbone_back_outputs[0].nbytes,
+                            output_shape,
+                        )
+                    else:
+                        self.backbone_forw_context.set_input_shape("feat", feat.shape)
+                        trt_utils.do_inference_v2(
+                            self.backbone_forw_context,
+                            bindings=[int(feat.data_ptr())]
+                            + self.backbone_forw_bindings,
+                            outputs=self.backbone_forw_outputs,
+                        )
+                        output_shape = [
+                            feat.shape[0],
+                            128,
+                            feat.shape[2],
+                            feat.shape[3],
+                        ]
+                        feat_prop = feat_prop + trt_utils.ptr_to_tensor(
+                            self.backbone_forw_outputs[0].device,
+                            self.backbone_forw_outputs[0].nbytes,
+                            output_shape,
+                        )
                     # feat prop shape: torch.Size([1, 128, 160, 90])
                     # feat prop shape: torch.Size([1, 128, 160, 90])
 
@@ -302,10 +347,17 @@ class BidirectionalPropagation(nn.Module):
             feat = torch.cat([outputs_b, outputs_f, mask_in], dim=1)
             # feat shape: torch.Size([6, 258, 160, 90])
             # feat shape: torch.Size([11, 258, 160, 90])
-            outputs = self.fuse(feat) + x.view(-1, c, h, w)
-            # self.fuse_context.set_input_shape('feat', feat.shape)
-            # trt_utils.do_inference_v2(self.fuse_context, bindings=[int(feat.data_ptr())] + self.fuse_bindings, outputs=self.fuse_outputs)
-            # outputs = trt_utils.ptr_to_tensor(self.fuse_outputs[0].device, self.fuse_outputs[0].nbytes, self.fuse_outputs[0].shape)[:t] + x.view(-1, c, h, w)
+            # outputs = self.fuse(feat) + x.view(-1, c, h, w)
+            self.fuse_context.set_input_shape("feat", feat.shape)
+            trt_utils.do_inference_v2(
+                self.fuse_context,
+                bindings=[int(feat.data_ptr())] + self.fuse_bindings,
+                outputs=self.fuse_outputs,
+            )
+            output_shape = [feat.shape[0], 128, feat.shape[2], feat.shape[3]]
+            outputs = trt_utils.ptr_to_tensor(
+                self.fuse_outputs[0].device, self.fuse_outputs[0].nbytes, output_shape
+            ) + x.view(-1, c, h, w)
             # outputs shape: torch.Size([6, 128, 160, 90])
             # outputs shape: torch.Size([11, 128, 160, 90])
         else:
@@ -376,7 +428,7 @@ class Encoder(nn.Module):
             if i == 10:
                 break
             out = layer(out)
-    
+
         x = x0.view(bt, 2, 128, h, w)
         o = out.view(bt, 2, 192, h, w)
         out = torch.cat([x, o], 2).view(bt, 640, h, w)
@@ -397,7 +449,7 @@ class Encoder(nn.Module):
         out = torch.cat([x, o], 2).view(bt, 512, h, w)
         out = self.layers[16](out)
         out = self.layers[17](out)
-        
+
         return out
 
 
@@ -424,33 +476,41 @@ class InpaintGenerator(BaseNetwork):
         hidden = 512
 
         # encoder
-        self.encoder = Encoder()
-        self.encoder_engine = trt_utils.load_engine("/root/ProPainter/weights/inpainter_encoder_best.engine")
-        _, self.encoder_outputs, self.encoder_bindings = trt_utils.allocate_buffers(self.encoder_engine, shapes={'input': [18, 5, 1280, 1280]})
+        # self.encoder = Encoder()
+        self.encoder_engine = trt_utils.load_engine(
+            "/root/ProPainter/weights/inpainter_encoder_res_best.engine"
+        )
+        _, self.encoder_outputs, self.encoder_bindings = trt_utils.allocate_buffers(
+            self.encoder_engine, shapes={"ouput": [18, 5, 1280, 1280]}
+        )
         for host_device_buffer in self.encoder_outputs:
             print(
-                    f"Tensor Name: {host_device_buffer.name} Shape: {host_device_buffer.shape} "
-                    f"Data Type: {host_device_buffer.dtype} Data Format: {host_device_buffer.format}"
+                f"Tensor Name: {host_device_buffer.name} Shape: {host_device_buffer.shape} "
+                f"Data Type: {host_device_buffer.dtype} Data Format: {host_device_buffer.format}"
             )
         self.encoder_context = self.encoder_engine.create_execution_context()
 
         # decoder
-        self.decoder = nn.Sequential(
-            deconv(channel, 128, kernel_size=3, padding=1),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(128, 64, kernel_size=3, stride=1, padding=1),
-            nn.LeakyReLU(0.2, inplace=True),
-            deconv(64, 64, kernel_size=3, padding=1),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(64, 3, kernel_size=3, stride=1, padding=1),
-        )
+        # self.decoder = nn.Sequential(
+        #     deconv(channel, 128, kernel_size=3, padding=1),
+        #     nn.LeakyReLU(0.2, inplace=True),
+        #     nn.Conv2d(128, 64, kernel_size=3, stride=1, padding=1),
+        #     nn.LeakyReLU(0.2, inplace=True),
+        #     deconv(64, 64, kernel_size=3, padding=1),
+        #     nn.LeakyReLU(0.2, inplace=True),
+        #     nn.Conv2d(64, 3, kernel_size=3, stride=1, padding=1),
+        # )
 
-        self.decoder_engine = trt_utils.load_engine("/root/ProPainter/weights/inpainter_decoder_best.engine")
-        _, self.decoder_outputs, self.decoder_bindings = trt_utils.allocate_buffers(self.decoder_engine, shapes={'input': [11, 128, 320, 320]})
+        self.decoder_engine = trt_utils.load_engine(
+            "/root/ProPainter/weights/inpainter_decoder_res_best.engine"
+        )
+        _, self.decoder_outputs, self.decoder_bindings = trt_utils.allocate_buffers(
+            self.decoder_engine, shapes={"ouput": [11, 128, 320, 320]}
+        )
         for host_device_buffer in self.decoder_outputs:
             print(
-                    f"Tensor Name: {host_device_buffer.name} Shape: {host_device_buffer.shape} "
-                    f"Data Type: {host_device_buffer.dtype} Data Format: {host_device_buffer.format}"
+                f"Tensor Name: {host_device_buffer.name} Shape: {host_device_buffer.shape} "
+                f"Data Type: {host_device_buffer.dtype} Data Format: {host_device_buffer.format}"
             )
         self.decoder_context = self.decoder_engine.create_execution_context()
 
@@ -531,13 +591,31 @@ class InpaintGenerator(BaseNetwork):
         #     )
         # )
 
-        enc_input = torch.cat([masked_frames.view(b * t, 3, ori_h, ori_w),
-                                        masks_in.view(b * t, 1, ori_h, ori_w),
-                                        masks_updated.view(b * t, 1, ori_h, ori_w)], dim=1)
-        self.encoder_context.set_input_shape('input', enc_input.shape)
-        trt_utils.do_inference_v2(self.encoder_context, bindings=[int(enc_input.data_ptr())] + self.encoder_bindings, outputs=self.encoder_outputs)
-        enc_output_shape = [enc_input.shape[0], 128, enc_input.shape[2] // 4, enc_input.shape[3] // 4]
-        enc_feat = trt_utils.ptr_to_tensor(self.encoder_outputs[0].device, self.encoder_outputs[0].nbytes, enc_output_shape)
+        enc_input = torch.cat(
+            [
+                masked_frames.view(b * t, 3, ori_h, ori_w),
+                masks_in.view(b * t, 1, ori_h, ori_w),
+                masks_updated.view(b * t, 1, ori_h, ori_w),
+            ],
+            dim=1,
+        )
+        self.encoder_context.set_input_shape("input", enc_input.shape)
+        trt_utils.do_inference_v2(
+            self.encoder_context,
+            bindings=[int(enc_input.data_ptr())] + self.encoder_bindings,
+            outputs=self.encoder_outputs,
+        )
+        enc_output_shape = [
+            enc_input.shape[0],
+            128,
+            enc_input.shape[2] // 4,
+            enc_input.shape[3] // 4,
+        ]
+        enc_feat = trt_utils.ptr_to_tensor(
+            self.encoder_outputs[0].device,
+            self.encoder_outputs[0].nbytes,
+            enc_output_shape,
+        )
 
         _, c, h, w = enc_feat.size()
         local_feat = enc_feat.view(b, t, c, h, w)[:, :l_t, ...]
@@ -611,10 +689,23 @@ class InpaintGenerator(BaseNetwork):
             # output = self.decoder(enc_feat[:, :l_t].view(-1, c, h, w))
 
             decoder_input = enc_feat[:, :l_t].view(-1, c, h, w)
-            self.decoder_context.set_input_shape('input', decoder_input.shape)
-            trt_utils.do_inference_v2(self.decoder_context, bindings=[int(decoder_input.data_ptr())] + self.decoder_bindings, outputs=self.decoder_outputs)
-            output_shape = [decoder_input.shape[0], 3, decoder_input.shape[2] * 4, decoder_input.shape[3] * 4]
-            output = trt_utils.ptr_to_tensor(self.decoder_outputs[0].device, self.decoder_outputs[0].nbytes, output_shape)
+            self.decoder_context.set_input_shape("input", decoder_input.shape)
+            trt_utils.do_inference_v2(
+                self.decoder_context,
+                bindings=[int(decoder_input.data_ptr())] + self.decoder_bindings,
+                outputs=self.decoder_outputs,
+            )
+            output_shape = [
+                decoder_input.shape[0],
+                3,
+                decoder_input.shape[2] * 4,
+                decoder_input.shape[3] * 4,
+            ]
+            output = trt_utils.ptr_to_tensor(
+                self.decoder_outputs[0].device,
+                self.decoder_outputs[0].nbytes,
+                output_shape,
+            )
 
             output = torch.tanh(output).view(b, l_t, 3, ori_h, ori_w)
 
@@ -651,7 +742,7 @@ class InpaintGenerator(BaseNetwork):
             encoder_input,
             "inpainter_encoder_res.onnx",
             input_names=["input"],
-            output_names=["ouput"],
+            output_names=["output"],
             dynamic_axes={
                 "input": {0: "batch_size", 2: "height", 3: "width"},
                 "output": {0: "batch_size", 2: "height", 3: "width"},
@@ -663,22 +754,22 @@ class InpaintGenerator(BaseNetwork):
             decoder_input,
             "inpainter_decoder_res.onnx",
             input_names=["input"],
-            output_names=["ouput"],
+            output_names=["output"],
             dynamic_axes={
                 "input": {0: "batch_size", 2: "height", 3: "width"},
                 "output": {0: "batch_size", 2: "height", 3: "width"},
             },
             opset_version=20,
         )
-        
+
         # TODO: deforma conv2d do not support dynamic axes
-        
+
         onnx_program = torch.onnx.export(
             self.feat_prop_module.backbone["backward_1"],
             feat_back_backbone_feat,
             "inpainter_feat_back_backbone_res.onnx",
             input_names=["feat"],
-            output_names=["ouput"],
+            output_names=["output"],
             dynamic_axes={
                 "feat": {2: "height", 3: "width"},
                 "output": {2: "height", 3: "width"},
@@ -690,7 +781,7 @@ class InpaintGenerator(BaseNetwork):
             feat_forw_backbone_feat,
             "inpainter_feat_forw_backbone_res.onnx",
             input_names=["feat"],
-            output_names=["ouput"],
+            output_names=["output"],
             dynamic_axes={
                 "feat": {2: "height", 3: "width"},
                 "output": {2: "height", 3: "width"},
@@ -702,7 +793,7 @@ class InpaintGenerator(BaseNetwork):
             feat_fuse_feat,
             "inpainter_feat_fuse_res.onnx",
             input_names=["feat"],
-            output_names=["ouput"],
+            output_names=["output"],
             dynamic_axes={
                 "feat": {0: "batch_size", 2: "height", 3: "width"},
                 "output": {0: "batch_size", 2: "height", 3: "width"},
