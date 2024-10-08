@@ -316,7 +316,7 @@ class Encoder(nn.Module):
                 x = x0.view(bt, g, -1, h, w)
                 o = out.view(bt, g, -1, h, w)
                 out = torch.cat([x, o], 2).view(bt, -1, h, w)
-            torch.Size([18, 5, 640, 360])
+            # torch.Size([18, 5, 640, 360])
             # torch.Size([18, 64, 320, 180])
             # torch.Size([18, 64, 320, 180])
             # torch.Size([18, 64, 320, 180])

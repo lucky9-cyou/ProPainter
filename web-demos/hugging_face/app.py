@@ -75,7 +75,8 @@ def get_frames_from_video(video_input, video_state):
             if ret == True:
                 # resize input image
                 original_h, original_w = frame.shape[:2]
-                scale_factor = min(1, 640 / max(original_h, original_w))
+                # scale_factor = min(1, 640 / max(original_h, original_w))
+                scale_factor = 1
                 target_h, target_w = int(original_h * scale_factor), int(original_w * scale_factor)
                 if scale_factor != 1:
                     frame = cv2.resize(frame, (target_w, target_h))
@@ -92,8 +93,8 @@ def get_frames_from_video(video_input, video_state):
         print("read_frame_source:{} error. {}\n".format(video_path, str(e)))
     
     # initialize video_state
-    if frames[0].shape[0] > 720 or frames[0].shape[1] > 720:
-         operation_log = [(f"Video uploaded! Try to click the image shown in step2 to add masks. (You uploaded a video with a size of {original_w}x{original_h}, and the length of its longest edge exceeds 720 pixels. We may resize the input video during processing.)", "Normal")]
+    # if frames[0].shape[0] > 720 or frames[0].shape[1] > 720:
+    #      operation_log = [(f"Video uploaded! Try to click the image shown in step2 to add masks. (You uploaded a video with a size of {original_w}x{original_h}, and the length of its longest edge exceeds 720 pixels. We may resize the input video during processing.)", "Normal")]
 
     video_state = {
         "user_name": user_name,
