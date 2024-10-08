@@ -6,12 +6,12 @@ from collections import defaultdict
 
 
 def tensor_to_numpy(image):
-    image_np = (image.numpy() * 255).astype('uint8')
+    image_np = (image.numpy() * 255).astype("uint8")
     return image_np
 
 
 def tensor_to_np_float(image):
-    image_np = image.numpy().astype('float32')
+    image_np = image.numpy().astype("float32")
     return image_np
 
 
@@ -39,8 +39,8 @@ def tensor_to_im(x):
 
 # Predefined key <-> caption dict
 key_captions = {
-    'im': 'Image',
-    'gt': 'GT',
+    "im": "Image",
+    "gt": "GT",
 }
 """
 Return an image array with captions
@@ -65,9 +65,17 @@ def get_image_array(images, grid_shape, captions={}):
 
         # Handles new line character
         dy = 40
-        for i, line in enumerate(caption.split('\n')):
-            cv2.putText(output_image, line, (10, col_cnt * w + 100 + i * dy), font, 0.8,
-                        (255, 255, 255), 2, cv2.LINE_AA)
+        for i, line in enumerate(caption.split("\n")):
+            cv2.putText(
+                output_image,
+                line,
+                (10, col_cnt * w + 100 + i * dy),
+                font,
+                0.8,
+                (255, 255, 255),
+                2,
+                cv2.LINE_AA,
+            )
 
         # Put images
         for row_cnt, img in enumerate(v):
@@ -75,10 +83,13 @@ def get_image_array(images, grid_shape, captions={}):
             if len(im_shape) == 2:
                 img = img[..., np.newaxis]
 
-            img = (img * 255).astype('uint8')
+            img = (img * 255).astype("uint8")
 
-            output_image[(col_cnt + 0) * w:(col_cnt + 1) * w,
-                         (row_cnt + 1) * h:(row_cnt + 2) * h, :] = img
+            output_image[
+                (col_cnt + 0) * w : (col_cnt + 1) * w,
+                (row_cnt + 1) * h : (row_cnt + 2) * h,
+                :,
+            ] = img
 
         col_cnt += 1
 
@@ -127,7 +138,7 @@ def add_attention(mask, pos):
 def vis(images, size, num_objects):
     req_images = defaultdict(list)
 
-    b, t = images['rgb'].shape[:2]
+    b, t = images["rgb"].shape[:2]
 
     # limit the number of images saved
     b = min(2, b)
@@ -135,41 +146,47 @@ def vis(images, size, num_objects):
     # find max num objects
     max_num_objects = max(num_objects[:b])
 
-    GT_suffix = ''
+    GT_suffix = ""
     for bi in range(b):
-        GT_suffix += ' \n%s' % images['info']['name'][bi][-25:-4]
+        GT_suffix += " \n%s" % images["info"]["name"][bi][-25:-4]
 
     for bi in range(b):
         for ti in range(t):
-            req_images['RGB'].append(im_transform(images['rgb'][bi, ti], size))
-            aux = images[f'aux_{max(ti, 1)}']  # no aux_0, use aux_1 for shape
-            if 'sensory_logits' in aux:
-                sensory_aux = aux['sensory_logits'][bi].softmax(dim=0)
+            req_images["RGB"].append(im_transform(images["rgb"][bi, ti], size))
+            aux = images[f"aux_{max(ti, 1)}"]  # no aux_0, use aux_1 for shape
+            if "sensory_logits" in aux:
+                sensory_aux = aux["sensory_logits"][bi].softmax(dim=0)
             # batch_size * num_objects * num_levels * H * W
-            q_mask_aux = aux['q_logits'][bi].softmax(dim=0)
+            q_mask_aux = aux["q_logits"][bi].softmax(dim=0)
             num_levels = q_mask_aux.shape[1]
 
             for oi in range(max_num_objects):
                 if ti == 0 or oi >= num_objects[bi]:
-                    req_images[f'Mask_{oi}'].append(
-                        mask_transform(images['first_frame_gt'][bi][0, oi], size))
-                    req_images[f'S-Aux_{oi}'].append(
-                        mask_transform(images['first_frame_gt'][bi][0, oi], size))
+                    req_images[f"Mask_{oi}"].append(
+                        mask_transform(images["first_frame_gt"][bi][0, oi], size)
+                    )
+                    req_images[f"S-Aux_{oi}"].append(
+                        mask_transform(images["first_frame_gt"][bi][0, oi], size)
+                    )
                     for l in range(num_levels):
-                        req_images[f'Q-Aux-L{l}_{oi}'].append(
-                            mask_transform(images['first_frame_gt'][bi][0, oi], size))
+                        req_images[f"Q-Aux-L{l}_{oi}"].append(
+                            mask_transform(images["first_frame_gt"][bi][0, oi], size)
+                        )
                 else:
-                    mask = mask_transform(images[f'masks_{ti}'][bi][oi], size)
-                    req_images[f'Mask_{oi}'].append(mask)
-                    if 'sensory_logits' in aux:
-                        req_images[f'S-Aux_{oi}'].append(mask_transform(sensory_aux[oi + 1], size))
+                    mask = mask_transform(images[f"masks_{ti}"][bi][oi], size)
+                    req_images[f"Mask_{oi}"].append(mask)
+                    if "sensory_logits" in aux:
+                        req_images[f"S-Aux_{oi}"].append(
+                            mask_transform(sensory_aux[oi + 1], size)
+                        )
 
                     for l in range(num_levels):
                         mask = mask_transform(q_mask_aux[oi + 1, l], size)
-                        req_images[f'Q-Aux-L{l}_{oi}'].append(mask)
+                        req_images[f"Q-Aux-L{l}_{oi}"].append(mask)
 
-                req_images[f'GT_{oi}_{GT_suffix}'].append(
-                    mask_transform(images['cls_gt'][bi, ti, 0] == (oi + 1), size))
+                req_images[f"GT_{oi}_{GT_suffix}"].append(
+                    mask_transform(images["cls_gt"][bi, ti, 0] == (oi + 1), size)
+                )
 
     return get_image_array(req_images, size, key_captions)
 
@@ -177,7 +194,7 @@ def vis(images, size, num_objects):
 def vis_debug(images, size, num_objects):
     req_images = defaultdict(list)
 
-    b, t = images['rgb'].shape[:2]
+    b, t = images["rgb"].shape[:2]
 
     # limit the number of images saved
     b = min(2, b)
@@ -185,46 +202,53 @@ def vis_debug(images, size, num_objects):
     # find max num objects
     max_num_objects = max(num_objects[:b])
 
-    GT_suffix = ''
+    GT_suffix = ""
     for bi in range(b):
-        GT_suffix += ' \n%s' % images['info']['name'][bi][-25:-4]
+        GT_suffix += " \n%s" % images["info"]["name"][bi][-25:-4]
 
     for bi in range(b):
         for ti in range(t):
-            req_images['RGB'].append(im_transform(images['rgb'][bi, ti], size))
-            aux = images[f'aux_{max(ti, 1)}']  # no aux_0, use aux_1 for shape
-            sensory_aux = aux['sensory_logits'][bi].softmax(dim=0)
+            req_images["RGB"].append(im_transform(images["rgb"][bi, ti], size))
+            aux = images[f"aux_{max(ti, 1)}"]  # no aux_0, use aux_1 for shape
+            sensory_aux = aux["sensory_logits"][bi].softmax(dim=0)
             # batch_size * num_objects * num_levels * H * W
-            q_mask_aux = aux['q_logits'][bi].softmax(dim=0)
-            attn_mask = aux['attn_mask'][bi]
+            q_mask_aux = aux["q_logits"][bi].softmax(dim=0)
+            attn_mask = aux["attn_mask"][bi]
             num_levels = q_mask_aux.shape[1]
             num_queries = attn_mask.shape[1]
 
             for oi in range(max_num_objects):
                 if ti == 0 or oi >= num_objects[bi]:
-                    req_images[f'Mask_{oi}'].append(
-                        mask_transform(images['first_frame_gt'][bi][0, oi], size))
-                    req_images[f'S-Aux_{oi}'].append(
-                        mask_transform(images['first_frame_gt'][bi][0, oi], size))
+                    req_images[f"Mask_{oi}"].append(
+                        mask_transform(images["first_frame_gt"][bi][0, oi], size)
+                    )
+                    req_images[f"S-Aux_{oi}"].append(
+                        mask_transform(images["first_frame_gt"][bi][0, oi], size)
+                    )
                     for l in range(num_levels):
-                        req_images[f'Q-Aux-L{l}_{oi}'].append(
-                            mask_transform(images['first_frame_gt'][bi][0, oi], size))
+                        req_images[f"Q-Aux-L{l}_{oi}"].append(
+                            mask_transform(images["first_frame_gt"][bi][0, oi], size)
+                        )
                     for q in range(num_queries):
-                        req_images[f'Attn-Mask-Q{q}_{oi}'].append(
-                            mask_transform(images['first_frame_gt'][bi][0, oi], size))
+                        req_images[f"Attn-Mask-Q{q}_{oi}"].append(
+                            mask_transform(images["first_frame_gt"][bi][0, oi], size)
+                        )
                 else:
-                    mask = mask_transform(images[f'masks_{ti}'][bi][oi], size)
-                    req_images[f'Mask_{oi}'].append(mask)
-                    req_images[f'S-Aux_{oi}'].append(mask_transform(sensory_aux[oi + 1], size))
+                    mask = mask_transform(images[f"masks_{ti}"][bi][oi], size)
+                    req_images[f"Mask_{oi}"].append(mask)
+                    req_images[f"S-Aux_{oi}"].append(
+                        mask_transform(sensory_aux[oi + 1], size)
+                    )
 
                     for l in range(num_levels):
                         mask = mask_transform(q_mask_aux[oi + 1, l], size)
-                        req_images[f'Q-Aux-L{l}_{oi}'].append(mask)
+                        req_images[f"Q-Aux-L{l}_{oi}"].append(mask)
                     for q in range(num_queries):
                         mask = mask_transform(1 - attn_mask[oi, q].float(), size)
-                        req_images[f'Attn-Mask-Q{q}_{oi}'].append(mask)
+                        req_images[f"Attn-Mask-Q{q}_{oi}"].append(mask)
 
-                req_images[f'GT_{oi}_{GT_suffix}'].append(
-                    mask_transform(images['cls_gt'][bi, ti, 0] == (oi + 1), size))
+                req_images[f"GT_{oi}_{GT_suffix}"].append(
+                    mask_transform(images["cls_gt"][bi, ti, 0] == (oi + 1), size)
+                )
 
     return get_image_array(req_images, size, key_captions)

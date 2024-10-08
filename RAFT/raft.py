@@ -58,13 +58,13 @@ class RAFT(nn.Module):
             )
             self.update_block = SmallUpdateBlock(self.args, hidden_dim=hdim)
         else:
-            self.fnet = BasicEncoder(
-                output_dim=256, norm_fn="instance", dropout=args.dropout
-            )
-            self.cnet = BasicEncoder(
-                output_dim=hdim + cdim, norm_fn="batch", dropout=args.dropout
-            )
-            self.update_block = BasicUpdateBlock(self.args, hidden_dim=hdim)
+            # self.fnet = BasicEncoder(
+            #     output_dim=256, norm_fn="instance", dropout=args.dropout
+            # )
+            # self.cnet = BasicEncoder(
+            #     output_dim=hdim + cdim, norm_fn="batch", dropout=args.dropout
+            # )
+            # self.update_block = BasicUpdateBlock(self.args, hidden_dim=hdim)
 
             self.fnet_engine = trt_utils.load_engine(args.fnet_path)
             _, self.fnet_outputs, self.fnet_bindings = trt_utils.allocate_buffers(
@@ -208,7 +208,7 @@ class RAFT(nn.Module):
 
             flow = coords1 - coords0
 
-            net, up_mask, delta_flow = self.update_block(net, inp, corr, flow)
+            # net, up_mask, delta_flow = self.update_block(net, inp, corr, flow)
             self.update_block_context.set_input_shape("net_in", net.shape)
             self.update_block_context.set_input_shape("inp", inp.shape)
             self.update_block_context.set_input_shape("corr", corr.shape)

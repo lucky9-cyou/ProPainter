@@ -9,7 +9,7 @@ class ID2RGBConverter:
         self.lock = Lock()
 
     def _id_to_rgb(self, id: int):
-        rgb = np.zeros((3, ), dtype=np.uint8)
+        rgb = np.zeros((3,), dtype=np.uint8)
         for i in range(3):
             rgb[i] = id % 256
             id = id // 256

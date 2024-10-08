@@ -1,4 +1,3 @@
-
 from typing import Optional, List
 import numpy as np
 import tensorrt as trt
@@ -10,9 +9,11 @@ from math import prod
 import torch
 import cupy as cp
 
+
 def load_engine(engine_file_path):
     with open(engine_file_path, "rb") as f, trt.Runtime(TRT_LOGGER) as runtime:
         return runtime.deserialize_cuda_engine(f.read())
+
 
 def check_cuda_err(err):
     if isinstance(err, cuda.CUresult):
@@ -24,6 +25,7 @@ def check_cuda_err(err):
     else:
         raise RuntimeError("Unknown error type: {}".format(err))
 
+
 def cuda_call(call):
     err, res = call[0], call[1:]
     check_cuda_err(err)
@@ -31,15 +33,18 @@ def cuda_call(call):
         res = res[0]
     return res
 
+
 class DeviceMem:
     """Pair of host and device memory, where the host memory is wrapped in a numpy array"""
 
-    def __init__(self,
-                 size: int,
-                 dtype: np.dtype,
-                 name: Optional[str] = None,
-                 shape: Optional[trt.Dims] = None,
-                 format: Optional[trt.TensorFormat] = None):
+    def __init__(
+        self,
+        size: int,
+        dtype: np.dtype,
+        name: Optional[str] = None,
+        shape: Optional[trt.Dims] = None,
+        format: Optional[trt.TensorFormat] = None,
+    ):
         nbytes = size * dtype.itemsize
         self._device = cuda_call(cudart.cudaMalloc(nbytes))
         self._nbytes = nbytes
@@ -81,20 +86,19 @@ class DeviceMem:
     def free(self):
         cuda_call(cudart.cudaFree(self.device))
 
+
 def allocate_buffers(engine: trt.ICudaEngine, shapes: dict):
     inputs = []
     outputs = []
     bindings = []
-    tensor_names = [
-        engine.get_tensor_name(i) for i in range(engine.num_io_tensors)
-    ]
+    tensor_names = [engine.get_tensor_name(i) for i in range(engine.num_io_tensors)]
     for binding in tensor_names:
         # get_tensor_profile_shape returns (min_shape, optimal_shape, max_shape)
         # Pick out the max shape to allocate enough memory for the binding.
-        
+
         if engine.get_tensor_mode(binding) == trt.TensorIOMode.INPUT:
             continue
-        
+
         shape = shapes[binding]
         print(f"Binding: {binding}, Shape: {shape}")
         size = trt.volume(shape)
@@ -102,11 +106,7 @@ def allocate_buffers(engine: trt.ICudaEngine, shapes: dict):
         dtype = np.dtype(trt.nptype(engine.get_tensor_dtype(binding)))
 
         # Allocate host and device buffers
-        bindingMemory = DeviceMem(size,
-                                      dtype,
-                                      name=binding,
-                                      shape=shape,
-                                      format=format)
+        bindingMemory = DeviceMem(size, dtype, name=binding, shape=shape, format=format)
 
         # Append the device buffer to device bindings.
         bindings.append(int(bindingMemory.device))
@@ -115,14 +115,17 @@ def allocate_buffers(engine: trt.ICudaEngine, shapes: dict):
         outputs.append(bindingMemory)
     return inputs, outputs, bindings
 
+
 def free_outputs(outputs: List[DeviceMem], stream: cudart.cudaStream_t):
     for mem in outputs:
         mem.free()
     cuda_call(cudart.cudaStreamDestroy(stream))
 
+
 # Frees the resources allocated in allocate_buffers
-def free_buffers(inputs: List[DeviceMem], outputs: List[DeviceMem],
-                 stream: cudart.cudaStream_t):
+def free_buffers(
+    inputs: List[DeviceMem], outputs: List[DeviceMem], stream: cudart.cudaStream_t
+):
     for mem in inputs + outputs:
         mem.free()
     cuda_call(cudart.cudaStreamDestroy(stream))
@@ -132,16 +135,20 @@ def free_buffers(inputs: List[DeviceMem], outputs: List[DeviceMem],
 def memcpy_host_to_device(device_ptr: int, host_arr: np.ndarray):
     nbytes = host_arr.size * host_arr.itemsize
     cuda_call(
-        cudart.cudaMemcpy(device_ptr, host_arr, nbytes,
-                          cudart.cudaMemcpyKind.cudaMemcpyHostToDevice))
+        cudart.cudaMemcpy(
+            device_ptr, host_arr, nbytes, cudart.cudaMemcpyKind.cudaMemcpyHostToDevice
+        )
+    )
 
 
 # Wrapper for cudaMemcpy which infers copy size and does error checking
 def memcpy_device_to_host(host_arr: np.ndarray, device_ptr: int):
     nbytes = host_arr.size * host_arr.itemsize
     cuda_call(
-        cudart.cudaMemcpy(host_arr, device_ptr, nbytes,
-                          cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost))
+        cudart.cudaMemcpy(
+            host_arr, device_ptr, nbytes, cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost
+        )
+    )
 
 
 def _do_inference_base(outputs, execute_sync):
@@ -157,6 +164,7 @@ def do_inference_v2(context, bindings, outputs):
         context.execute_v2(bindings=bindings)
 
     return _do_inference_base(outputs, execute_sync)
+
 
 def ptr_to_tensor(device_ptr: int, nbytes: int, shape: tuple):
     new_nbytes = prod(shape) * 4

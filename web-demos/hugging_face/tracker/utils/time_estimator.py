@@ -7,7 +7,9 @@ class TimeEstimator:
         self.exp_avg_time = None  # exponential moving average
         self.alpha = 0.7  # for exponential moving average
 
-        self.last_time = time.time()  # would not be accurate for the first iteration but well
+        self.last_time = (
+            time.time()
+        )  # would not be accurate for the first iteration but well
         self.total_iter = total_iter
         self.step_size = step_size
 
@@ -28,7 +30,9 @@ class TimeEstimator:
                 self.buffering_exp = False
             self.exp_avg_time = time_per_iter
         else:
-            self.exp_avg_time = self.alpha * self.exp_avg_time + (1 - self.alpha) * time_per_iter
+            self.exp_avg_time = (
+                self.alpha * self.exp_avg_time + (1 - self.alpha) * time_per_iter
+            )
 
     def get_est_remaining(self, it):
         if self.exp_avg_time is None:

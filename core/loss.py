@@ -3,6 +3,7 @@ import torch.nn as nn
 import lpips
 from model.vgg_arch import VGGFeatureExtractor
 
+
 class PerceptualLoss(nn.Module):
     """Perceptual loss with commonly used style loss.
 
@@ -26,14 +27,16 @@ class PerceptualLoss(nn.Module):
         criterion (str): Criterion used for perceptual loss. Default: 'l1'.
     """
 
-    def __init__(self,
-                 layer_weights,
-                 vgg_type='vgg19',
-                 use_input_norm=True,
-                 range_norm=False,
-                 perceptual_weight=1.0,
-                 style_weight=0.,
-                 criterion='l1'):
+    def __init__(
+        self,
+        layer_weights,
+        vgg_type="vgg19",
+        use_input_norm=True,
+        range_norm=False,
+        perceptual_weight=1.0,
+        style_weight=0.0,
+        criterion="l1",
+    ):
         super(PerceptualLoss, self).__init__()
         self.perceptual_weight = perceptual_weight
         self.style_weight = style_weight
@@ -42,19 +45,20 @@ class PerceptualLoss(nn.Module):
             layer_name_list=list(layer_weights.keys()),
             vgg_type=vgg_type,
             use_input_norm=use_input_norm,
-            range_norm=range_norm)
+            range_norm=range_norm,
+        )
 
         self.criterion_type = criterion
-        if self.criterion_type == 'l1':
+        if self.criterion_type == "l1":
             self.criterion = torch.nn.L1Loss()
-        elif self.criterion_type == 'l2':
+        elif self.criterion_type == "l2":
             self.criterion = torch.nn.L2loss()
-        elif self.criterion_type == 'mse':
-            self.criterion = torch.nn.MSELoss(reduction='mean')
-        elif self.criterion_type == 'fro':
+        elif self.criterion_type == "mse":
+            self.criterion = torch.nn.MSELoss(reduction="mean")
+        elif self.criterion_type == "fro":
             self.criterion = None
         else:
-            raise NotImplementedError(f'{criterion} criterion has not been supported.')
+            raise NotImplementedError(f"{criterion} criterion has not been supported.")
 
     def forward(self, x, gt):
         """Forward function.
@@ -74,10 +78,16 @@ class PerceptualLoss(nn.Module):
         if self.perceptual_weight > 0:
             percep_loss = 0
             for k in x_features.keys():
-                if self.criterion_type == 'fro':
-                    percep_loss += torch.norm(x_features[k] - gt_features[k], p='fro') * self.layer_weights[k]
+                if self.criterion_type == "fro":
+                    percep_loss += (
+                        torch.norm(x_features[k] - gt_features[k], p="fro")
+                        * self.layer_weights[k]
+                    )
                 else:
-                    percep_loss += self.criterion(x_features[k], gt_features[k]) * self.layer_weights[k]
+                    percep_loss += (
+                        self.criterion(x_features[k], gt_features[k])
+                        * self.layer_weights[k]
+                    )
             percep_loss *= self.perceptual_weight
         else:
             percep_loss = None
@@ -86,12 +96,23 @@ class PerceptualLoss(nn.Module):
         if self.style_weight > 0:
             style_loss = 0
             for k in x_features.keys():
-                if self.criterion_type == 'fro':
-                    style_loss += torch.norm(
-                        self._gram_mat(x_features[k]) - self._gram_mat(gt_features[k]), p='fro') * self.layer_weights[k]
+                if self.criterion_type == "fro":
+                    style_loss += (
+                        torch.norm(
+                            self._gram_mat(x_features[k])
+                            - self._gram_mat(gt_features[k]),
+                            p="fro",
+                        )
+                        * self.layer_weights[k]
+                    )
                 else:
-                    style_loss += self.criterion(self._gram_mat(x_features[k]), self._gram_mat(
-                        gt_features[k])) * self.layer_weights[k]
+                    style_loss += (
+                        self.criterion(
+                            self._gram_mat(x_features[k]),
+                            self._gram_mat(gt_features[k]),
+                        )
+                        * self.layer_weights[k]
+                    )
             style_loss *= self.style_weight
         else:
             style_loss = None
@@ -113,11 +134,14 @@ class PerceptualLoss(nn.Module):
         gram = features.bmm(features_t) / (c * h * w)
         return gram
 
+
 class LPIPSLoss(nn.Module):
-    def __init__(self, 
-            loss_weight=1.0, 
-            use_input_norm=True,
-            range_norm=False,):
+    def __init__(
+        self,
+        loss_weight=1.0,
+        use_input_norm=True,
+        range_norm=False,
+    ):
         super(LPIPSLoss, self).__init__()
         self.perceptual = lpips.LPIPS(net="vgg", spatial=False).eval()
         self.loss_weight = loss_weight
@@ -126,16 +150,20 @@ class LPIPSLoss(nn.Module):
 
         if self.use_input_norm:
             # the mean is for image with range [0, 1]
-            self.register_buffer('mean', torch.Tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1))
+            self.register_buffer(
+                "mean", torch.Tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
+            )
             # the std is for image with range [0, 1]
-            self.register_buffer('std', torch.Tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1))
+            self.register_buffer(
+                "std", torch.Tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
+            )
 
     def forward(self, pred, target):
         if self.range_norm:
-            pred   = (pred + 1) / 2
+            pred = (pred + 1) / 2
             target = (target + 1) / 2
         if self.use_input_norm:
-            pred   = (pred - self.mean) / self.std
+            pred = (pred - self.mean) / self.std
             target = (target - self.mean) / self.std
         lpips_loss = self.perceptual(target.contiguous(), pred.contiguous())
         return self.loss_weight * lpips_loss.mean(), None
@@ -146,27 +174,25 @@ class AdversarialLoss(nn.Module):
     Adversarial loss
     https://arxiv.org/abs/1711.10337
     """
-    def __init__(self,
-                 type='nsgan',
-                 target_real_label=1.0,
-                 target_fake_label=0.0):
+
+    def __init__(self, type="nsgan", target_real_label=1.0, target_fake_label=0.0):
         r"""
         type = nsgan | lsgan | hinge
         """
         super(AdversarialLoss, self).__init__()
         self.type = type
-        self.register_buffer('real_label', torch.tensor(target_real_label))
-        self.register_buffer('fake_label', torch.tensor(target_fake_label))
+        self.register_buffer("real_label", torch.tensor(target_real_label))
+        self.register_buffer("fake_label", torch.tensor(target_fake_label))
 
-        if type == 'nsgan':
+        if type == "nsgan":
             self.criterion = nn.BCELoss()
-        elif type == 'lsgan':
+        elif type == "lsgan":
             self.criterion = nn.MSELoss()
-        elif type == 'hinge':
+        elif type == "hinge":
             self.criterion = nn.ReLU()
 
     def __call__(self, outputs, is_real, is_disc=None):
-        if self.type == 'hinge':
+        if self.type == "hinge":
             if is_disc:
                 if is_real:
                     outputs = -outputs
@@ -174,7 +200,8 @@ class AdversarialLoss(nn.Module):
             else:
                 return (-outputs).mean()
         else:
-            labels = (self.real_label
-                      if is_real else self.fake_label).expand_as(outputs)
+            labels = (self.real_label if is_real else self.fake_label).expand_as(
+                outputs
+            )
             loss = self.criterion(outputs, labels)
             return loss
