@@ -146,7 +146,7 @@ Some commands:
 /usr/src/tensorrt/bin/trtexec --onnx=inpainter_feat_fuse.onnx --saveEngine=inpainter_feat_fuse_best.engine --best --verbose  --minShapes='feat:6x258x160x90' --optShapes='feat:11x258x160x90' --maxShapes='feat:11x258x160x90' --dumpOptimizationProfile --builderOptimizationLevel=4 --useSpinWait --sparsity=enable > inpainter_feat_fuse.log
 ```
 
-Some commands for multi resolution:
+Some commands for multi resolution (not include `deform`, `deform` operator do not support dynamic shape):
 ```bash
 /usr/src/tensorrt/bin/trtexec --onnx=inpainter_encoder_res.onnx --saveEngine=inpainter_encoder_res_best.engine --best --verbose  --minShapes='input:9x5x180x180' --optShapes='input:18x5x640x360' --maxShapes='input:18x5x1280x1280'  --dumpOptimizationProfile --builderOptimizationLevel=4 --useSpinWait --sparsity=enable > inpainter_encoder_res.log
 
