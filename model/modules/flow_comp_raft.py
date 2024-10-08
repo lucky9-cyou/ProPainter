@@ -2,7 +2,6 @@ import argparse
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 from RAFT import RAFT
 from model.modules.flow_loss_utils import flow_warp, ternary_loss2
 
@@ -15,10 +14,19 @@ def initialize_RAFT(model_path='weights/raft-things.pth', device='cuda'):
     args.small = False
     args.mixed_precision = False
     args.alternate_corr = False
-    model = torch.nn.DataParallel(RAFT(args))
-    model.load_state_dict(torch.load(args.raft_model, map_location='cpu'))
-    model = model.module
-
+    args.fnet_path = "/root/ProPainter/weights/raft_fnet_quan_best.engine"
+    args.cnet_path = "/root/ProPainter/weights/raft_cnet_quan_best.engine"
+    args.update_block_path = "/root/ProPainter/weights/raft_update_block_quan_best.engine"
+    
+    model = RAFT(args)
+    weights = torch.load(args.raft_model, map_location='cpu')
+    
+    for k in list(weights.keys()):
+        weights[k[7:]] = weights[k]
+        del weights[k]
+    model.load_state_dict(weights)
+    
+    model.eval()
     model.to(device)
 
     return model
@@ -56,6 +64,9 @@ class RAFT_bi(nn.Module):
         gt_flows_backward = gt_flows_backward.view(b, l_t-1, 2, h, w)
 
         return gt_flows_forward, gt_flows_backward
+
+    def export_quantized_model(self):
+        self.fix_raft.export_quantized_model()
 
 
 ##################################################################################

@@ -15,9 +15,11 @@ from model.recurrent_flow_completion import RecurrentFlowCompleteNet
 from model.propainter import InpaintGenerator
 from core.utils import to_tensors
 import time
+import modelopt.torch.quantization as mtq
 
 import warnings
 warnings.filterwarnings("ignore")
+import threading
 
 
 def imwrite(img, file_path, params=None, auto_mkdir=True):
@@ -184,10 +186,16 @@ class ProInpainter:
 		##############################################
 		self.model = InpaintGenerator(model_path=propainter_checkpoint).to(self.device)
 		self.model.eval()
+  
+		self.model1 = InpaintGenerator(model_path=propainter_checkpoint).to(self.device)
+		self.model1.eval()
 
 		if self.use_half:
 			self.fix_flow_complete = self.fix_flow_complete.half()
 			self.model = self.model.half()
+			self.model1 = self.model1.half()
+   
+		# self.model.export_quantized_model()
 
 	def inpaint(self, npframes, masks, ratio=1.0, dilate_radius=4, raft_iter=20, subvideo_length=80, neighbor_length=10, ref_stride=10):
 		"""
@@ -236,6 +244,9 @@ class ProInpainter:
 			# use fp32 for RAFT
 			if frames.size(1) > short_clip_len:
 				gt_flows_f_list, gt_flows_b_list = [], []
+
+				# config = mtq.INT8_SMOOTHQUANT_CFG
+				# def raft_forward(model):
 				for f in range(0, video_length, short_clip_len):
 					end_f = min(video_length, f + short_clip_len)
 					if f == 0:
@@ -246,6 +257,7 @@ class ProInpainter:
 					gt_flows_f_list.append(flows_f)
 					gt_flows_b_list.append(flows_b)
 					torch.cuda.empty_cache()
+				# self.fix_raft = mtq.quantize(self.fix_raft, config, raft_forward)
 					
 				gt_flows_f = torch.cat(gt_flows_f_list, dim=1)
 				gt_flows_b = torch.cat(gt_flows_b_list, dim=1)
@@ -260,6 +272,9 @@ class ProInpainter:
 
 			raft_time_end = time.time_ns()
 			print(f"RAFT time: {(raft_time_end - raft_time_start) / 1e6} ms")
+			# mtq.print_quant_summary(self.fix_raft)
+			# self.fix_raft.export_quantized_model()
+   
 
 			complete_flow_time_start = time.time_ns()
 			# ---- complete flow ----
@@ -342,43 +357,64 @@ class ProInpainter:
 			ref_num = -1
 		
 		feature_propagation_time_start = time.time_ns()
-		# ---- feature propagation + transformer ----
-		for f in tqdm(range(0, video_length, neighbor_stride)):
-			neighbor_ids = [
-				i for i in range(max(0, f - neighbor_stride),
-									min(video_length, f + neighbor_stride + 1))
-			]
-			ref_ids = get_ref_index(f, neighbor_ids, video_length, ref_stride, ref_num)
-			selected_imgs = updated_frames[:, neighbor_ids + ref_ids, :, :, :]
-			selected_masks = masks_dilated[:, neighbor_ids + ref_ids, :, :, :]
-			selected_update_masks = updated_masks[:, neighbor_ids + ref_ids, :, :, :]
-			selected_pred_flows_bi = (pred_flows_bi[0][:, neighbor_ids[:-1], :, :, :], pred_flows_bi[1][:, neighbor_ids[:-1], :, :, :])
-			
-			with torch.no_grad():
-				# 1.0 indicates mask
-				l_t = len(neighbor_ids)
-				
-				# pred_img = selected_imgs # results of image propagation
-				pred_img = self.model(selected_imgs, selected_pred_flows_bi, selected_masks, selected_update_masks, l_t)
-				
-				pred_img = pred_img.view(-1, 3, h, w)
 
-				pred_img = (pred_img + 1) / 2
-				pred_img = pred_img.cpu().permute(0, 2, 3, 1).numpy() * 255
-				binary_masks = masks_dilated[0, neighbor_ids, :, :, :].cpu().permute(
-					0, 2, 3, 1).numpy().astype(np.uint8)
-				for i in range(len(neighbor_ids)):
-					idx = neighbor_ids[i]
-					img = np.array(pred_img[i]).astype(np.uint8) * binary_masks[i] \
-						+ ori_frames[idx] * (1 - binary_masks[i])
-					if comp_frames[idx] is None:
-						comp_frames[idx] = img
-					else: 
-						comp_frames[idx] = comp_frames[idx].astype(np.float32) * 0.5 + img.astype(np.float32) * 0.5
-						
-					comp_frames[idx] = comp_frames[idx].astype(np.uint8)
+  		# ---- feature propagation + transformer ----
+		# config = mtq.FP8_DEFAULT_CFG
+		# def inpainter_forard(model):
+		for f in tqdm(range(0, video_length, neighbor_stride * 2)):
 			
+			def feature_propagation_thread(index, model):
+				if index >= video_length:
+					return
+				neighbor_ids = [
+					i for i in range(max(0, index - neighbor_stride),
+										min(video_length, index + neighbor_stride + 1))
+				]
+				ref_ids = get_ref_index(index, neighbor_ids, video_length, ref_stride, ref_num)
+				selected_imgs = updated_frames[:, neighbor_ids + ref_ids, :, :, :]
+				selected_masks = masks_dilated[:, neighbor_ids + ref_ids, :, :, :]
+				selected_update_masks = updated_masks[:, neighbor_ids + ref_ids, :, :, :]
+				selected_pred_flows_bi = (pred_flows_bi[0][:, neighbor_ids[:-1], :, :, :], pred_flows_bi[1][:, neighbor_ids[:-1], :, :, :])
+				
+				with torch.no_grad():
+					# 1.0 indicates mask
+					l_t = len(neighbor_ids)
+					
+					# pred_img = selected_imgs # results of image propagation
+					pred_img = model(selected_imgs, selected_pred_flows_bi, selected_masks, selected_update_masks, l_t)
+					
+					pred_img = pred_img.view(-1, 3, h, w)
+
+					pred_img = (pred_img + 1) / 2
+					pred_img = pred_img.cpu().permute(0, 2, 3, 1).numpy() * 255
+					binary_masks = masks_dilated[0, neighbor_ids, :, :, :].cpu().permute(
+						0, 2, 3, 1).numpy().astype(np.uint8)
+					for i in range(len(neighbor_ids)):
+						idx = neighbor_ids[i]
+						img = np.array(pred_img[i]).astype(np.uint8) * binary_masks[i] \
+							+ ori_frames[idx] * (1 - binary_masks[i])
+						if comp_frames[idx] is None:
+							comp_frames[idx] = img
+						else: 
+							comp_frames[idx] = comp_frames[idx].astype(np.float32) * 0.5 + img.astype(np.float32) * 0.5
+							
+						comp_frames[idx] = comp_frames[idx].astype(np.uint8)
+				
+			thread = threading.Thread(target=feature_propagation_thread, args=(f, self.model))
+			thread1 = threading.Thread(target=feature_propagation_thread, args=(f + neighbor_stride, self.model1))
+   
+			thread.start()
+			thread1.start()
+
+			thread.join()
+			thread1.join()
+
 			torch.cuda.empty_cache()
+
+		# self.model = mtq.quantize(self.model, config, inpainter_forard)
+		# mtq.print_quant_summary(self.model)
+		# self.model.export_quantized_model()
+
 		feature_propagation_time_end = time.time_ns()
 		print(f"Feature propagation time: {(feature_propagation_time_end - feature_propagation_time_start) / 1e6} ms")
 
