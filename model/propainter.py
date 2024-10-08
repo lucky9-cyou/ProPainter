@@ -352,33 +352,52 @@ class Encoder(nn.Module):
         bt, c, _, _ = x.size()
         # h, w = h//4, w//4
         out = x
+        # torch.Size([18, 5, 640, 360])
+        # torch.Size([18, 64, 320, 180])
+        # torch.Size([18, 64, 320, 180])
+        # torch.Size([18, 64, 320, 180])
+        # torch.Size([18, 64, 320, 180])
+        # torch.Size([18, 128, 160, 90])
+        # torch.Size([18, 128, 160, 90])
+        # torch.Size([18, 256, 160, 90])
+        # torch.Size([18, 256, 160, 90])
+        # torch.Size([18, 384, 160, 90])
+        # torch.Size([18, 640, 160, 90])
+        # torch.Size([18, 512, 160, 90])
+        # torch.Size([18, 768, 160, 90])
+        # torch.Size([18, 384, 160, 90])
+        # torch.Size([18, 640, 160, 90])
+        # torch.Size([18, 256, 160, 90])
+        # torch.Size([18, 512, 160, 90])
         for i, layer in enumerate(self.layers):
             if i == 8:
                 x0 = out
                 _, _, h, w = x0.size()
-            if i > 8 and i % 2 == 0:
-                g = self.group[(i - 8) // 2]
-                x = x0.view(bt, g, -1, h, w)
-                o = out.view(bt, g, -1, h, w)
-                out = torch.cat([x, o], 2).view(bt, -1, h, w)
-            # torch.Size([18, 5, 640, 360])
-            # torch.Size([18, 64, 320, 180])
-            # torch.Size([18, 64, 320, 180])
-            # torch.Size([18, 64, 320, 180])
-            # torch.Size([18, 64, 320, 180])
-            # torch.Size([18, 128, 160, 90])
-            # torch.Size([18, 128, 160, 90])
-            # torch.Size([18, 256, 160, 90])
-            # torch.Size([18, 256, 160, 90])
-            # torch.Size([18, 384, 160, 90])
-            # torch.Size([18, 640, 160, 90])
-            # torch.Size([18, 512, 160, 90])
-            # torch.Size([18, 768, 160, 90])
-            # torch.Size([18, 384, 160, 90])
-            # torch.Size([18, 640, 160, 90])
-            # torch.Size([18, 256, 160, 90])
-            # torch.Size([18, 512, 160, 90])
+            if i == 10:
+                break
             out = layer(out)
+    
+        x = x0.view(bt, 2, 128, h, w)
+        o = out.view(bt, 2, 192, h, w)
+        out = torch.cat([x, o], 2).view(bt, 640, h, w)
+        out = self.layers[10](out)
+        out = self.layers[11](out)
+        x = x0.view(bt, 4, 64, h, w)
+        o = out.view(bt, 4, 128, h, w)
+        out = torch.cat([x, o], 2).view(bt, 768, h, w)
+        out = self.layers[12](out)
+        out = self.layers[13](out)
+        x = x0.view(bt, 8, 32, h, w)
+        o = out.view(bt, 8, 48, h, w)
+        out = torch.cat([x, o], 2).view(bt, 640, h, w)
+        out = self.layers[14](out)
+        out = self.layers[15](out)
+        x = x0.view(bt, 1, 256, h, w)
+        o = out.view(bt, 1, 256, h, w)
+        out = torch.cat([x, o], 2).view(bt, 512, h, w)
+        out = self.layers[16](out)
+        out = self.layers[17](out)
+        
         return out
 
 
@@ -406,14 +425,14 @@ class InpaintGenerator(BaseNetwork):
 
         # encoder
         self.encoder = Encoder()
-        # self.encoder_engine = trt_utils.load_engine("/root/ProPainter/weights/inpainter_encoder_best.engine")
-        # _, self.encoder_outputs, self.encoder_bindings = trt_utils.allocate_buffers(self.encoder_engine)
-        # for host_device_buffer in self.encoder_outputs:
-        #     print(
-        #             f"Tensor Name: {host_device_buffer.name} Shape: {host_device_buffer.shape} "
-        #             f"Data Type: {host_device_buffer.dtype} Data Format: {host_device_buffer.format}"
-        #     )
-        # self.encoder_context = self.encoder_engine.create_execution_context()
+        self.encoder_engine = trt_utils.load_engine("/root/ProPainter/weights/inpainter_encoder_best.engine")
+        _, self.encoder_outputs, self.encoder_bindings = trt_utils.allocate_buffers(self.encoder_engine, shapes={'input': [18, 5, 1280, 1280]})
+        for host_device_buffer in self.encoder_outputs:
+            print(
+                    f"Tensor Name: {host_device_buffer.name} Shape: {host_device_buffer.shape} "
+                    f"Data Type: {host_device_buffer.dtype} Data Format: {host_device_buffer.format}"
+            )
+        self.encoder_context = self.encoder_engine.create_execution_context()
 
         # decoder
         self.decoder = nn.Sequential(
@@ -426,14 +445,14 @@ class InpaintGenerator(BaseNetwork):
             nn.Conv2d(64, 3, kernel_size=3, stride=1, padding=1),
         )
 
-        # self.decoder_engine = trt_utils.load_engine("/root/ProPainter/weights/inpainter_decoder_best.engine")
-        # _, self.decoder_outputs, self.decoder_bindings = trt_utils.allocate_buffers(self.decoder_engine)
-        # for host_device_buffer in self.decoder_outputs:
-        #     print(
-        #             f"Tensor Name: {host_device_buffer.name} Shape: {host_device_buffer.shape} "
-        #             f"Data Type: {host_device_buffer.dtype} Data Format: {host_device_buffer.format}"
-        #     )
-        # self.decoder_context = self.decoder_engine.create_execution_context()
+        self.decoder_engine = trt_utils.load_engine("/root/ProPainter/weights/inpainter_decoder_best.engine")
+        _, self.decoder_outputs, self.decoder_bindings = trt_utils.allocate_buffers(self.decoder_engine, shapes={'input': [11, 128, 320, 320]})
+        for host_device_buffer in self.decoder_outputs:
+            print(
+                    f"Tensor Name: {host_device_buffer.name} Shape: {host_device_buffer.shape} "
+                    f"Data Type: {host_device_buffer.dtype} Data Format: {host_device_buffer.format}"
+            )
+        self.decoder_context = self.decoder_engine.create_execution_context()
 
         # soft split and soft composition
         kernel_size = (7, 7)
@@ -466,7 +485,7 @@ class InpaintGenerator(BaseNetwork):
         if model_path is not None:
             print("Pretrained ProPainter has loaded...")
             ckpt = torch.load(model_path, map_location="cpu")
-            self.load_state_dict(ckpt, strict=True)
+            self.load_state_dict(ckpt, strict=False)
 
         # print network parameter number
         self.print_network()
@@ -501,23 +520,24 @@ class InpaintGenerator(BaseNetwork):
         # extracting features
         # [9, 5, 640, 360] -> [18, 5, 640, 360]
 
-        enc_feat = self.encoder(
-            torch.cat(
-                [
-                    masked_frames.view(b * t, 3, ori_h, ori_w),
-                    masks_in.view(b * t, 1, ori_h, ori_w),
-                    masks_updated.view(b * t, 1, ori_h, ori_w),
-                ],
-                dim=1,
-            )
-        )
+        # enc_feat = self.encoder(
+        #     torch.cat(
+        #         [
+        #             masked_frames.view(b * t, 3, ori_h, ori_w),
+        #             masks_in.view(b * t, 1, ori_h, ori_w),
+        #             masks_updated.view(b * t, 1, ori_h, ori_w),
+        #         ],
+        #         dim=1,
+        #     )
+        # )
 
-        # enc_input = torch.cat([masked_frames.view(b * t, 3, ori_h, ori_w),
-        #                                 masks_in.view(b * t, 1, ori_h, ori_w),
-        #                                 masks_updated.view(b * t, 1, ori_h, ori_w)], dim=1)
-        # self.encoder_context.set_input_shape('input', enc_input.shape)
-        # trt_utils.do_inference_v2(self.encoder_context, bindings=[int(enc_input.data_ptr())] + self.encoder_bindings, outputs=self.encoder_outputs)
-        # enc_feat = trt_utils.ptr_to_tensor(self.encoder_outputs[0].device, self.encoder_outputs[0].nbytes, self.encoder_outputs[0].shape)[:b * t]
+        enc_input = torch.cat([masked_frames.view(b * t, 3, ori_h, ori_w),
+                                        masks_in.view(b * t, 1, ori_h, ori_w),
+                                        masks_updated.view(b * t, 1, ori_h, ori_w)], dim=1)
+        self.encoder_context.set_input_shape('input', enc_input.shape)
+        trt_utils.do_inference_v2(self.encoder_context, bindings=[int(enc_input.data_ptr())] + self.encoder_bindings, outputs=self.encoder_outputs)
+        enc_output_shape = [enc_input.shape[0], 128, enc_input.shape[2] // 4, enc_input.shape[3] // 4]
+        enc_feat = trt_utils.ptr_to_tensor(self.encoder_outputs[0].device, self.encoder_outputs[0].nbytes, enc_output_shape)
 
         _, c, h, w = enc_feat.size()
         local_feat = enc_feat.view(b, t, c, h, w)[:, :l_t, ...]
@@ -588,12 +608,13 @@ class InpaintGenerator(BaseNetwork):
             output = torch.tanh(output).view(b, t, 3, ori_h, ori_w)
         else:
             # decoder input shape: torch.Size([6, 128, 160, 90]) -> torch.Size([11, 128, 160, 90])
-            output = self.decoder(enc_feat[:, :l_t].view(-1, c, h, w))
+            # output = self.decoder(enc_feat[:, :l_t].view(-1, c, h, w))
 
-            # decoder_input = enc_feat[:, :l_t].view(-1, c, h, w)
-            # self.decoder_context.set_input_shape('input', decoder_input.shape)
-            # trt_utils.do_inference_v2(self.decoder_context, bindings=[int(decoder_input.data_ptr())] + self.decoder_bindings, outputs=self.decoder_outputs)
-            # output = trt_utils.ptr_to_tensor(self.decoder_outputs[0].device, self.decoder_outputs[0].nbytes, self.decoder_outputs[0].shape)[:decoder_input.shape[0]]
+            decoder_input = enc_feat[:, :l_t].view(-1, c, h, w)
+            self.decoder_context.set_input_shape('input', decoder_input.shape)
+            trt_utils.do_inference_v2(self.decoder_context, bindings=[int(decoder_input.data_ptr())] + self.decoder_bindings, outputs=self.decoder_outputs)
+            output_shape = [decoder_input.shape[0], 3, decoder_input.shape[2] * 4, decoder_input.shape[3] * 4]
+            output = trt_utils.ptr_to_tensor(self.decoder_outputs[0].device, self.decoder_outputs[0].nbytes, output_shape)
 
             output = torch.tanh(output).view(b, l_t, 3, ori_h, ori_w)
 

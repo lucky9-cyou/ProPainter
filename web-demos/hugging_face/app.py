@@ -91,7 +91,10 @@ def get_frames_from_video(video_input, video_state):
                 # resize input image
                 original_h, original_w = frame.shape[:2]
                 # scale_factor = min(1, 640 / max(original_h, original_w))
-                scale_factor = 1
+                if original_h > 360 and original_w > 360:
+                    scale_factor = 0.5
+                else:
+                    scale_factor = 1
                 target_h, target_w = int(original_h * scale_factor), int(
                     original_w * scale_factor
                 )
