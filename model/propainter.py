@@ -628,7 +628,7 @@ class InpaintGenerator(BaseNetwork):
         onnx_program = torch.onnx.export(
             self.encoder,
             encoder_input,
-            "inpainter_encoder.onnx",
+            "inpainter_encoder_res.onnx",
             input_names=["input"],
             output_names=["ouput"],
             dynamic_axes={
@@ -640,7 +640,7 @@ class InpaintGenerator(BaseNetwork):
         onnx_program = torch.onnx.export(
             self.decoder,
             decoder_input,
-            "inpainter_decoder.onnx",
+            "inpainter_decoder_res.onnx",
             input_names=["input"],
             output_names=["ouput"],
             dynamic_axes={
@@ -649,62 +649,37 @@ class InpaintGenerator(BaseNetwork):
             },
             opset_version=20,
         )
-        onnx_program = torch.onnx.export(
-            self.feat_prop_module.deform_align["backward_1"],
-            (
-                feat_back_deform_align_feat,
-                feat_back_deform_align_cond,
-                feat_back_deform_align_flow,
-            ),
-            "inpainter_feat_back_deform_align.onnx",
-            input_names=["feat", "cond", "flow"],
-            output_names=["ouput"],
-            dynamic_axes={
-                "feat": {2: "height", 3: "width"},
-                "cond": {2: "height", 3: "width"},
-                "flow": {2: "height", 3: "width"},
-                "output": {2: "height", 3: "width"},
-            },
-            opset_version=20,
-        )
-        onnx_program = torch.onnx.export(
-            self.feat_prop_module.deform_align["forward_1"],
-            (
-                feat_forw_deform_align_feat,
-                feat_forw_deform_align_cond,
-                feat_forw_deform_align_flow,
-            ),
-            "inpainter_feat_forw_deform_align.onnx",
-            input_names=["feat", "cond", "flow"],
-            output_names=["ouput"],
-            dynamic_axes={
-                "feat": {2: "height", 3: "width"},
-                "cond": {2: "height", 3: "width"},
-                "flow": {2: "height", 3: "width"},
-                "output": {2: "height", 3: "width"},
-            },
-            opset_version=20,
-        )
+        
+        # TODO: deforma conv2d do not support dynamic axes
+        
         onnx_program = torch.onnx.export(
             self.feat_prop_module.backbone["backward_1"],
             feat_back_backbone_feat,
-            "inpainter_feat_back_backbone.onnx",
+            "inpainter_feat_back_backbone_res.onnx",
             input_names=["feat"],
             output_names=["ouput"],
+            dynamic_axes={
+                "feat": {2: "height", 3: "width"},
+                "output": {2: "height", 3: "width"},
+            },
             opset_version=20,
         )
         onnx_program = torch.onnx.export(
             self.feat_prop_module.backbone["forward_1"],
             feat_forw_backbone_feat,
-            "inpainter_feat_forw_backbone.onnx",
+            "inpainter_feat_forw_backbone_res.onnx",
             input_names=["feat"],
             output_names=["ouput"],
+            dynamic_axes={
+                "feat": {2: "height", 3: "width"},
+                "output": {2: "height", 3: "width"},
+            },
             opset_version=20,
         )
         onnx_program = torch.onnx.export(
             self.feat_prop_module.fuse,
             feat_fuse_feat,
-            "inpainter_feat_fuse.onnx",
+            "inpainter_feat_fuse_res.onnx",
             input_names=["feat"],
             output_names=["ouput"],
             dynamic_axes={
@@ -713,7 +688,6 @@ class InpaintGenerator(BaseNetwork):
             },
             opset_version=20,
         )
-        # onnx_program = torch.onnx.export(self.transformers, (transformer_feat, transformer_mask), 'inpainter_transformer_quan.onnx', input_names=['feat', 'mask'], output_names=['ouput'], dynamic_axes={'feat': {1: 'batch_size'}, 'mask': {1: 'batch_size'}, 'output': {1: 'batch_size'}}, opset_version=20)
 
 
 # ######################################################################

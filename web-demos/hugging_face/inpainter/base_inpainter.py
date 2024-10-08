@@ -213,7 +213,7 @@ class ProInpainter:
             self.model1 = self.model1.half()
         # self.fix_raft.export_quantized_model()
 
-        self.model.export_quantized_model()
+        # self.model.export_quantized_model()
 
     def inpaint(
         self,
