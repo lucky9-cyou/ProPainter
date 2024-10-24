@@ -40,11 +40,6 @@ class RAFT_bi(nn.Module):
         super().__init__()
         self.fix_raft = initialize_RAFT(model_path, device=device)
 
-        # gtlf_1 = torch.randn(12, 3, 640, 360).cuda()
-        # gtlf_2 = torch.randn(12, 3, 640, 360).cuda()
-        # iters = 20
-        # onnx_program = torch.onnx.export(self.fix_raft, (gtlf_1, gtlf_2, iters), "raft.onnx", input_names = ["gtlf_1", "gtlf_2", "iters"], output_names = ["none", "gt_flows_forward"], dynamic_axes = {"gtlf_1": {0: "batch_size"}, "gtlf_2": {0: "batch_size"}, "gt_flows_forward": {0: "batch_size"}}, opset_version=20)
-
         for p in self.fix_raft.parameters():
             p.requires_grad = False
 
