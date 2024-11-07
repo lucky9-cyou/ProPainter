@@ -13,8 +13,8 @@ def initialize_RAFT(model_path="weights/raft-things.pth", device="cuda"):
     args.small = False
     args.mixed_precision = False
     args.alternate_corr = False
-    args.fnet_path = "/root/ProPainter/weights/raft_fnet_quan_res_best.engine"
-    args.cnet_path = "/root/ProPainter/weights/raft_cnet_quan_res_best.engine"
+    args.fnet_path = "../../weights/raft_fnet_quan_res_best.engine"
+    args.cnet_path = "../../weights/raft_cnet_quan_res_best.engine"
     args.update_block_path = (
         "/root/ProPainter/weights/raft_update_block_quan_res_best.engine"
     )

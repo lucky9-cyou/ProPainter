@@ -92,7 +92,7 @@ class BaseTracker:
             final_mask[out_mask == v] = k
 
         num_objs = final_mask.max()
-        painted_image = frame
+        painted_image = np.zeros_like(frame)
         for obj in range(1, num_objs + 1):
             if np.max(final_mask == obj) == 0:
                 continue
