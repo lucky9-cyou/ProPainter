@@ -29,6 +29,7 @@ def parse_augment():
     parser.add_argument('--sam_model_type', type=str, default="vit_h")
     parser.add_argument('--port', type=int, default=8000, help="only useful when running gradio applications")  
     parser.add_argument('--mask_save', default=False)
+    parser.add_argument('--frame_extraction', action="store_true", default=False)
     args = parser.parse_args()
     
     if not args.device:
@@ -309,7 +310,7 @@ def vos_tracking_video(video_state, interactive_state, mask_dropdown):
     return video_output, video_state, interactive_state, operation_log, operation_log
 
 # inpaint 
-def inpaint_video(video_state, resize_ratio_number, dilate_radius_number, raft_iter_number, subvideo_length_number, neighbor_length_number, ref_stride_number, mask_dropdown):
+def inpaint_video(video_state, resize_ratio_number, dilate_radius_number, raft_iter_number, subvideo_length_number, neighbor_length_number, ref_stride_number, mask_dropdown, args):
     operation_log = [("",""), ("Inpainting finished!","Normal")]
 
     frames = np.asarray(video_state["origin_images"])
@@ -336,7 +337,8 @@ def inpaint_video(video_state, resize_ratio_number, dilate_radius_number, raft_i
                                                    raft_iter=raft_iter_number,
                                                    subvideo_length=subvideo_length_number, 
                                                    neighbor_length=neighbor_length_number, 
-                                                   ref_stride=ref_stride_number)   # numpy array, T, H, W, 3
+                                                   ref_stride=ref_stride_number,
+                                                   frame_extraction=args.frame_extraction)   # numpy array, T, H, W, 3
 
     video_output = generate_video_from_frames(inpainted_frames, output_path="./result/inpaint/{}".format(video_state["video_name"]), fps=fps) # import video_input to name the output video
 

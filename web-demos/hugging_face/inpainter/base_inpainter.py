@@ -224,6 +224,7 @@ class ProInpainter:
         subvideo_length=80,
         neighbor_length=10,
         ref_stride=10,
+        frame_extraction=False,
     ):
         """
         Perform Inpainting for video subsets
@@ -250,8 +251,8 @@ class ProInpainter:
 
         frames_inp = [np.array(f).astype(np.uint8) for f in frames]
         
-        if len(frames_inp) % 2 == 1:
-            frames = frames[:-1]
+        if frame_extraction and len(frames_inp) % 2 == 1:
+            print("Frame extraction is enabled")
             frames_inp = frames_inp[:-1]
         # elif len(frames_inp) % 4 == 2:
         #     frames = frames[:-2]
@@ -269,7 +270,8 @@ class ProInpainter:
             flow_masks.to(self.device),
             masks_dilated.to(self.device),
         )
-        frames, flow_masks, masks_dilated = frames[:, 1::2], flow_masks[:, 1::2], masks_dilated[:, 1::2]
+        if frame_extraction:
+            frames, flow_masks, masks_dilated = frames[:, 1::2], flow_masks[:, 1::2], masks_dilated[:, 1::2]
         ##############################################
         # ProPainter inference
         ##############################################
@@ -503,31 +505,46 @@ class ProInpainter:
                     # comp_frames[idx] = comp_frames[idx].astype(np.uint8)
                     
                     # frame extraction 2
-                    img1 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
-                        i
-                    ] + ori_frames[(idx * 2) + 1] * (1 - binary_masks[i])
-                    
-                    if comp_frames[(idx * 2) + 1] is None:
-                        comp_frames[(idx * 2) + 1] = img1
+                    if frame_extraction:
+                        img1 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
+                            i
+                        ] + ori_frames[(idx * 2) + 1] * (1 - binary_masks[i])
+                        
+                        if comp_frames[(idx * 2) + 1] is None:
+                            comp_frames[(idx * 2) + 1] = img1
+                        else:
+                            comp_frames[(idx * 2) + 1] = (
+                                comp_frames[(idx * 2) + 1].astype(np.float32) * 0.5
+                                + img1.astype(np.float32) * 0.5
+                            )
+                        
+                        comp_frames[(idx * 2) + 1] = comp_frames[(idx * 2) + 1].astype(np.uint8)
+                        
+                        img0 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
+                            i
+                        ] + ori_frames[idx * 2] * (1 - binary_masks[i])
+                        
+                        if comp_frames[idx * 2] is None:
+                            comp_frames[idx * 2] = img0
+                        else:
+                            comp_frames[idx * 2] = (
+                                comp_frames[idx * 2].astype(np.float32) * 0.5
+                                + img0.astype(np.float32) * 0.5
+                            )
                     else:
-                        comp_frames[(idx * 2) + 1] = (
-                            comp_frames[(idx * 2) + 1].astype(np.float32) * 0.5
-                            + img1.astype(np.float32) * 0.5
-                        )
-                    
-                    comp_frames[(idx * 2) + 1] = comp_frames[(idx * 2) + 1].astype(np.uint8)
-                    
-                    img0 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
-                        i
-                    ] + ori_frames[idx * 2] * (1 - binary_masks[i])
-                    
-                    if comp_frames[idx * 2] is None:
-                        comp_frames[idx * 2] = img0
-                    else:
-                        comp_frames[idx * 2] = (
-                            comp_frames[idx * 2].astype(np.float32) * 0.5
-                            + img0.astype(np.float32) * 0.5
-                        )
+                        img0 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
+                            i
+                        ] + ori_frames[idx] * (1 - binary_masks[i])
+                        
+                        if comp_frames[idx] is None:
+                            comp_frames[idx] = img0
+                        else:
+                            comp_frames[idx] = (
+                                comp_frames[idx].astype(np.float32) * 0.5
+                                + img0.astype(np.float32) * 0.5
+                            )
+                        
+                        comp_frames[idx] = comp_frames[idx].astype(np.uint8)
                     
                     # frame extraction 3
                     # img2 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
