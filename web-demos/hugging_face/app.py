@@ -90,11 +90,7 @@ def get_frames_from_video(video_input, video_state):
             if ret == True:
                 # resize input image
                 original_h, original_w = frame.shape[:2]
-                # scale_factor = min(1, 640 / max(original_h, original_w))
-                if original_h > 360 and original_w > 360:
-                    scale_factor = 0.5
-                else:
-                    scale_factor = 1
+                scale_factor = 1
                 target_h, target_w = int(original_h * scale_factor), int(
                     original_w * scale_factor
                 )
@@ -114,10 +110,6 @@ def get_frames_from_video(video_input, video_state):
         status_ok = False
         print("read_frame_source:{} error. {}\n".format(video_path, str(e)))
 
-    # initialize video_state
-    # if frames[0].shape[0] > 720 or frames[0].shape[1] > 720:
-    #      operation_log = [(f"Video uploaded! Try to click the image shown in step2 to add masks. (You uploaded a video with a size of {original_w}x{original_h}, and the length of its longest edge exceeds 720 pixels. We may resize the input video during processing.)", "Normal")]
-
     video_state = {
         "user_name": user_name,
         "video_name": os.path.split(video_path)[-1],
@@ -133,8 +125,8 @@ def get_frames_from_video(video_input, video_state):
         video_state["video_name"],
         round(video_state["fps"], 0),
         length,
-        (original_w, original_h),
-        (target_w, target_h),
+        (original_h, original_w),
+        (target_h, target_w),
     )
     model.samcontroler.sam_controler.reset_image()
     model.samcontroler.sam_controler.set_image(video_state["origin_images"][0])

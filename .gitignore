@@ -133,3 +133,6 @@ results/
 output/
 *.engine
 *.onnx
+*.typ
+*.pdf
+*.nsys-rep

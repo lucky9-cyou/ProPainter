@@ -16,6 +16,8 @@ from model.propainter import InpaintGenerator
 from core.utils import to_tensors
 import time
 import modelopt.torch.quantization as mtq
+import modelopt.torch.opt as mto
+import torch_tensorrt
 
 import warnings
 
@@ -203,14 +205,14 @@ class ProInpainter:
         ##############################################
         self.model = InpaintGenerator(model_path=propainter_checkpoint).to(self.device)
         self.model.eval()
-
+        # self.model = torch.compile(self.model)
+        # mto.restore(self.model, "/root/ProPainter/web-demos/hugging_face/propainter-quantize-default.pth")
+        
         if self.use_half:
             self.fix_flow_complete = self.fix_flow_complete.half()
             self.model = self.model.half()
-
-        # self.fix_raft.export_quantized_model()
-
-        # self.model.export_quantized_model()
+        
+        self.model.transformers = torch.compile(self.model.transformers)
 
     def inpaint(
         self,
@@ -247,37 +249,44 @@ class ProInpainter:
         w, h = size
 
         frames_inp = [np.array(f).astype(np.uint8) for f in frames]
+        # if len(frames_inp) % 4 == 1:
+        #     frames_inp = frames_inp[:-1]
+        # if len(frames_inp) % 4 == 2:
+        #     frames_inp = frames_inp[:-2]
+        # if len(frames_inp) % 4 == 3:
+        #     frames_inp = frames_inp[:-3]
+            
         frames = to_tensors()(frames).unsqueeze(0) * 2 - 1
         flow_masks = to_tensors()(flow_masks).unsqueeze(0)
         masks_dilated = to_tensors()(masks_dilated).unsqueeze(0)
+        # torch.Size([1, 251, 3, 552, 416]) torch.Size([1, 251, 1, 552, 416]) torch.Size([1, 251, 1, 552, 416])
         frames, flow_masks, masks_dilated = (
             frames.to(self.device),
             flow_masks.to(self.device),
             masks_dilated.to(self.device),
         )
-
+        # frames, flow_masks, masks_dilated = frames[:, 3::4], flow_masks[:, 3::4], masks_dilated[:, 3::4]
         ##############################################
         # ProPainter inference
         ##############################################
         video_length = frames.size(1)
         with torch.no_grad():
+            short_clip_len = 12
             # ---- compute flow ----
-            if frames.size(-1) <= 640:
-                short_clip_len = 12
-            elif frames.size(-1) <= 720:
-                short_clip_len = 8
-            elif frames.size(-1) <= 1280:
-                short_clip_len = 4
-            else:
-                short_clip_len = 2
+            # if frames.size(-1) <= 640:
+            #     short_clip_len = 12
+            # elif frames.size(-1) <= 720:
+            #     short_clip_len = 8
+            # elif frames.size(-1) <= 1280:
+            #     short_clip_len = 4
+            # else:
+            #     short_clip_len = 2
 
             raft_time_start = time.time_ns()
             # use fp32 for RAFT
             if frames.size(1) > short_clip_len:
                 gt_flows_f_list, gt_flows_b_list = [], []
 
-                # config = mtq.INT8_SMOOTHQUANT_CFG
-                # def raft_forward(model):
                 for f in range(0, video_length, short_clip_len):
                     end_f = min(video_length, f + short_clip_len)
                     if f == 0:
@@ -292,7 +301,6 @@ class ProInpainter:
                     gt_flows_f_list.append(flows_f)
                     gt_flows_b_list.append(flows_b)
                     torch.cuda.empty_cache()
-                # self.fix_raft = mtq.quantize(self.fix_raft, config, raft_forward)
 
                 gt_flows_f = torch.cat(gt_flows_f_list, dim=1)
                 gt_flows_b = torch.cat(gt_flows_b_list, dim=1)
@@ -418,7 +426,7 @@ class ProInpainter:
             )
 
         ori_frames = frames_inp
-        comp_frames = [None] * video_length
+        comp_frames = [None] * len(ori_frames)
 
         neighbor_stride = neighbor_length // 2
         if video_length > subvideo_length:
@@ -429,13 +437,10 @@ class ProInpainter:
         feature_propagation_time_start = time.time_ns()
 
         # ---- feature propagation + transformer ----
-        # config = mtq.FP8_DEFAULT_CFG
+        # config = mtq.INT4_AWQ_CFG
         # def inpainter_forard(model):
         for f in tqdm(range(0, video_length, neighbor_stride)):
 
-            # def feature_propagation_thread(index, model):
-            # if index >= video_length:
-            # 	return
             neighbor_ids = [
                 i
                 for i in range(
@@ -478,33 +483,153 @@ class ProInpainter:
                 )
                 for i in range(len(neighbor_ids)):
                     idx = neighbor_ids[i]
-                    img = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
+                    # frame extraction 1
+                    img0 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
                         i
                     ] + ori_frames[idx] * (1 - binary_masks[i])
+                    
                     if comp_frames[idx] is None:
-                        comp_frames[idx] = img
+                        comp_frames[idx] = img0
                     else:
                         comp_frames[idx] = (
                             comp_frames[idx].astype(np.float32) * 0.5
-                            + img.astype(np.float32) * 0.5
+                            + img0.astype(np.float32) * 0.5
                         )
-
+                    
                     comp_frames[idx] = comp_frames[idx].astype(np.uint8)
+                    
+                    # frame extraction 2
+                    # img1 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
+                    #     i
+                    # ] + ori_frames[(idx * 2) + 1] * (1 - binary_masks[i])
+                    
+                    # if comp_frames[(idx * 2) + 1] is None:
+                    #     comp_frames[(idx * 2) + 1] = img1
+                    # else:
+                    #     comp_frames[(idx * 2) + 1] = (
+                    #         comp_frames[(idx * 2) + 1].astype(np.float32) * 0.5
+                    #         + img1.astype(np.float32) * 0.5
+                    #     )
+                    
+                    # comp_frames[(idx * 2) + 1] = comp_frames[(idx * 2) + 1].astype(np.uint8)
+                    
+                    # img0 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
+                    #     i
+                    # ] + ori_frames[idx * 2] * (1 - binary_masks[i])
+                    
+                    # if comp_frames[idx * 2] is None:
+                    #     comp_frames[idx * 2] = img0
+                    # else:
+                    #     comp_frames[idx * 2] = (
+                    #         comp_frames[idx * 2].astype(np.float32) * 0.5
+                    #         + img0.astype(np.float32) * 0.5
+                    #     )
+                    
+                    # frame extraction 3
+                    # img2 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
+                    #     i
+                    # ] + ori_frames[(idx * 3) + 2] * (1 - binary_masks[i])
+                    
+                    # if comp_frames[(idx * 3) + 2] is None:
+                    #     comp_frames[(idx * 3) + 2] = img2
+                    # else:
+                    #     comp_frames[(idx * 3) + 2] = (
+                    #         comp_frames[(idx * 3) + 2].astype(np.float32) * 0.5
+                    #         + img2.astype(np.float32) * 0.5
+                    #     )
 
-            # thread = threading.Thread(target=feature_propagation_thread, args=(f, self.model))
-            # thread1 = threading.Thread(target=feature_propagation_thread, args=(f + neighbor_stride, self.model1))
+                    # comp_frames[(idx * 3) + 2] = comp_frames[(idx * 3) + 2].astype(np.uint8)
+                    
+                    # img0 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
+                    #     i
+                    # ] + ori_frames[idx * 3] * (1 - binary_masks[i])
+                    
+                    # if comp_frames[idx * 3] is None:
+                    #     comp_frames[idx * 3] = img0
+                    # else:
+                    #     comp_frames[idx * 3] = (
+                    #         comp_frames[idx * 3].astype(np.float32) * 0.5
+                    #         + img0.astype(np.float32) * 0.5
+                    #     )
 
-            # thread.start()
-            # thread1.start()
+                    # comp_frames[idx * 3] = comp_frames[idx * 3].astype(np.uint8)
+                    
+                    # img1 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
+                    #     i
+                    # ] + ori_frames[(idx * 3) + 1] * (1 - binary_masks[i])
+                    
+                    # if comp_frames[(idx * 3) + 1] is None:
+                    #     comp_frames[(idx * 3) + 1] = img1
+                    # else:
+                    #     comp_frames[(idx * 3) + 1] = (
+                    #         comp_frames[(idx * 3) + 1].astype(np.float32) * 0.5
+                    #         + img1.astype(np.float32) * 0.5
+                    #     )
 
-            # thread.join()
-            # thread1.join()
+                    # comp_frames[(idx * 3) + 1] = comp_frames[(idx * 3) + 1].astype(np.uint8)
+                    
+                    # frame extraction 4
+                    # img3 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
+                    #     i
+                    # ] + ori_frames[(idx * 4) + 3] * (1 - binary_masks[i])
+                    
+                    # if comp_frames[(idx * 4) + 3] is None:
+                    #     comp_frames[(idx * 4) + 3] = img3
+                    # else:
+                    #     comp_frames[(idx * 4) + 3] = (
+                    #         comp_frames[(idx * 4) + 3].astype(np.float32) * 0.5
+                    #         + img3.astype(np.float32) * 0.5
+                    #     )
+                    
+                    # comp_frames[(idx * 4) + 3] = comp_frames[(idx * 4) + 3].astype(np.uint8)
+                    
+                    # img2 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
+                    #     i
+                    # ] + ori_frames[(idx * 4) + 2] * (1 - binary_masks[i])
+                    
+                    # if comp_frames[(idx * 4) + 2] is None:
+                    #     comp_frames[(idx * 4) + 2] = img2
+                    # else:
+                    #     comp_frames[(idx * 4) + 2] = (
+                    #         comp_frames[(idx * 4) + 2].astype(np.float32) * 0.5
+                    #         + img2.astype(np.float32) * 0.5
+                    #     )
+                    
+                    # comp_frames[(idx * 4) + 2] = comp_frames[(idx * 4) + 2].astype(np.uint8)
+                    
+                    # img1 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
+                    #     i
+                    # ] + ori_frames[(idx * 4) + 1] * (1 - binary_masks[i])
+                    
+                    # if comp_frames[(idx * 4) + 1] is None:
+                    #     comp_frames[(idx * 4) + 1] = img1
+                    # else:
+                    #     comp_frames[(idx * 4) + 1] = (
+                    #         comp_frames[(idx * 4) + 1].astype(np.float32) * 0.5
+                    #         + img1.astype(np.float32) * 0.5
+                    #     )
+                    
+                    # comp_frames[(idx * 4) + 1] = comp_frames[(idx * 4) + 1].astype(np.uint8)
+                    
+                    # img0 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
+                    #     i
+                    # ] + ori_frames[idx * 4] * (1 - binary_masks[i])
+                    
+                    # if comp_frames[idx * 4] is None:
+                    #     comp_frames[idx * 4] = img0
+                    # else:
+                    #     comp_frames[idx * 4] = (
+                    #         comp_frames[idx * 4].astype(np.float32) * 0.5
+                    #         + img0.astype(np.float32) * 0.5
+                    #     )
+                    
+                    # comp_frames[idx * 4] = comp_frames[idx * 4].astype(np.uint8)
 
             torch.cuda.empty_cache()
 
         # self.model = mtq.quantize(self.model, config, inpainter_forard)
         # mtq.print_quant_summary(self.model)
-        # self.model.export_quantized_model()
+        # mto.save(self.model, "propainter-quantize-int4-awq.pth")
 
         feature_propagation_time_end = time.time_ns()
         print(
