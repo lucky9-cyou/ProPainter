@@ -249,12 +249,16 @@ class ProInpainter:
         w, h = size
 
         frames_inp = [np.array(f).astype(np.uint8) for f in frames]
-        # if len(frames_inp) % 4 == 1:
-        #     frames_inp = frames_inp[:-1]
-        # if len(frames_inp) % 4 == 2:
-        #     frames_inp = frames_inp[:-2]
-        # if len(frames_inp) % 4 == 3:
-        #     frames_inp = frames_inp[:-3]
+        
+        if len(frames_inp) % 4 == 1:
+            frames = frames[:-1]
+            frames_inp = frames_inp[:-1]
+        elif len(frames_inp) % 4 == 2:
+            frames = frames[:-2]
+            frames_inp = frames_inp[:-2]
+        elif len(frames_inp) % 4 == 3:
+            frames = frames[:-3]
+            frames_inp = frames_inp[:-3]
             
         frames = to_tensors()(frames).unsqueeze(0) * 2 - 1
         flow_masks = to_tensors()(flow_masks).unsqueeze(0)
@@ -265,7 +269,7 @@ class ProInpainter:
             flow_masks.to(self.device),
             masks_dilated.to(self.device),
         )
-        # frames, flow_masks, masks_dilated = frames[:, 3::4], flow_masks[:, 3::4], masks_dilated[:, 3::4]
+        frames, flow_masks, masks_dilated = frames[:, 3::4], flow_masks[:, 3::4], masks_dilated[:, 3::4]
         ##############################################
         # ProPainter inference
         ##############################################
@@ -484,19 +488,19 @@ class ProInpainter:
                 for i in range(len(neighbor_ids)):
                     idx = neighbor_ids[i]
                     # frame extraction 1
-                    img0 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
-                        i
-                    ] + ori_frames[idx] * (1 - binary_masks[i])
+                    # img0 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
+                    #     i
+                    # ] + ori_frames[idx] * (1 - binary_masks[i])
                     
-                    if comp_frames[idx] is None:
-                        comp_frames[idx] = img0
-                    else:
-                        comp_frames[idx] = (
-                            comp_frames[idx].astype(np.float32) * 0.5
-                            + img0.astype(np.float32) * 0.5
-                        )
+                    # if comp_frames[idx] is None:
+                    #     comp_frames[idx] = img0
+                    # else:
+                    #     comp_frames[idx] = (
+                    #         comp_frames[idx].astype(np.float32) * 0.5
+                    #         + img0.astype(np.float32) * 0.5
+                    #     )
                     
-                    comp_frames[idx] = comp_frames[idx].astype(np.uint8)
+                    # comp_frames[idx] = comp_frames[idx].astype(np.uint8)
                     
                     # frame extraction 2
                     # img1 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
@@ -569,61 +573,61 @@ class ProInpainter:
                     # comp_frames[(idx * 3) + 1] = comp_frames[(idx * 3) + 1].astype(np.uint8)
                     
                     # frame extraction 4
-                    # img3 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
-                    #     i
-                    # ] + ori_frames[(idx * 4) + 3] * (1 - binary_masks[i])
+                    img3 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
+                        i
+                    ] + ori_frames[(idx * 4) + 3] * (1 - binary_masks[i])
                     
-                    # if comp_frames[(idx * 4) + 3] is None:
-                    #     comp_frames[(idx * 4) + 3] = img3
-                    # else:
-                    #     comp_frames[(idx * 4) + 3] = (
-                    #         comp_frames[(idx * 4) + 3].astype(np.float32) * 0.5
-                    #         + img3.astype(np.float32) * 0.5
-                    #     )
+                    if comp_frames[(idx * 4) + 3] is None:
+                        comp_frames[(idx * 4) + 3] = img3
+                    else:
+                        comp_frames[(idx * 4) + 3] = (
+                            comp_frames[(idx * 4) + 3].astype(np.float32) * 0.5
+                            + img3.astype(np.float32) * 0.5
+                        )
                     
-                    # comp_frames[(idx * 4) + 3] = comp_frames[(idx * 4) + 3].astype(np.uint8)
+                    comp_frames[(idx * 4) + 3] = comp_frames[(idx * 4) + 3].astype(np.uint8)
                     
-                    # img2 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
-                    #     i
-                    # ] + ori_frames[(idx * 4) + 2] * (1 - binary_masks[i])
+                    img2 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
+                        i
+                    ] + ori_frames[(idx * 4) + 2] * (1 - binary_masks[i])
                     
-                    # if comp_frames[(idx * 4) + 2] is None:
-                    #     comp_frames[(idx * 4) + 2] = img2
-                    # else:
-                    #     comp_frames[(idx * 4) + 2] = (
-                    #         comp_frames[(idx * 4) + 2].astype(np.float32) * 0.5
-                    #         + img2.astype(np.float32) * 0.5
-                    #     )
+                    if comp_frames[(idx * 4) + 2] is None:
+                        comp_frames[(idx * 4) + 2] = img2
+                    else:
+                        comp_frames[(idx * 4) + 2] = (
+                            comp_frames[(idx * 4) + 2].astype(np.float32) * 0.5
+                            + img2.astype(np.float32) * 0.5
+                        )
                     
-                    # comp_frames[(idx * 4) + 2] = comp_frames[(idx * 4) + 2].astype(np.uint8)
+                    comp_frames[(idx * 4) + 2] = comp_frames[(idx * 4) + 2].astype(np.uint8)
                     
-                    # img1 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
-                    #     i
-                    # ] + ori_frames[(idx * 4) + 1] * (1 - binary_masks[i])
+                    img1 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
+                        i
+                    ] + ori_frames[(idx * 4) + 1] * (1 - binary_masks[i])
                     
-                    # if comp_frames[(idx * 4) + 1] is None:
-                    #     comp_frames[(idx * 4) + 1] = img1
-                    # else:
-                    #     comp_frames[(idx * 4) + 1] = (
-                    #         comp_frames[(idx * 4) + 1].astype(np.float32) * 0.5
-                    #         + img1.astype(np.float32) * 0.5
-                    #     )
+                    if comp_frames[(idx * 4) + 1] is None:
+                        comp_frames[(idx * 4) + 1] = img1
+                    else:
+                        comp_frames[(idx * 4) + 1] = (
+                            comp_frames[(idx * 4) + 1].astype(np.float32) * 0.5
+                            + img1.astype(np.float32) * 0.5
+                        )
                     
-                    # comp_frames[(idx * 4) + 1] = comp_frames[(idx * 4) + 1].astype(np.uint8)
+                    comp_frames[(idx * 4) + 1] = comp_frames[(idx * 4) + 1].astype(np.uint8)
                     
-                    # img0 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
-                    #     i
-                    # ] + ori_frames[idx * 4] * (1 - binary_masks[i])
+                    img0 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
+                        i
+                    ] + ori_frames[idx * 4] * (1 - binary_masks[i])
                     
-                    # if comp_frames[idx * 4] is None:
-                    #     comp_frames[idx * 4] = img0
-                    # else:
-                    #     comp_frames[idx * 4] = (
-                    #         comp_frames[idx * 4].astype(np.float32) * 0.5
-                    #         + img0.astype(np.float32) * 0.5
-                    #     )
+                    if comp_frames[idx * 4] is None:
+                        comp_frames[idx * 4] = img0
+                    else:
+                        comp_frames[idx * 4] = (
+                            comp_frames[idx * 4].astype(np.float32) * 0.5
+                            + img0.astype(np.float32) * 0.5
+                        )
                     
-                    # comp_frames[idx * 4] = comp_frames[idx * 4].astype(np.uint8)
+                    comp_frames[idx * 4] = comp_frames[idx * 4].astype(np.uint8)
 
             torch.cuda.empty_cache()
 
