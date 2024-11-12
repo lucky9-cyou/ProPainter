@@ -207,11 +207,11 @@ class ProInpainter:
         self.model.eval()
         # self.model = torch.compile(self.model)
         # mto.restore(self.model, "/root/ProPainter/web-demos/hugging_face/propainter-quantize-default.pth")
-        
+
         if self.use_half:
             self.fix_flow_complete = self.fix_flow_complete.half()
             self.model = self.model.half()
-        
+
         self.model.transformers = torch.compile(self.model.transformers)
 
     def inpaint(
@@ -250,7 +250,7 @@ class ProInpainter:
         w, h = size
 
         frames_inp = [np.array(f).astype(np.uint8) for f in frames]
-        
+
         if frame_extraction and len(frames_inp) % 2 == 1:
             print("Frame extraction is enabled")
             frames_inp = frames_inp[:-1]
@@ -260,7 +260,7 @@ class ProInpainter:
         # elif len(frames_inp) % 4 == 3:
         #     frames = frames[:-3]
         #     frames_inp = frames_inp[:-3]
-            
+
         frames = to_tensors()(frames).unsqueeze(0) * 2 - 1
         flow_masks = to_tensors()(flow_masks).unsqueeze(0)
         masks_dilated = to_tensors()(masks_dilated).unsqueeze(0)
@@ -271,7 +271,11 @@ class ProInpainter:
             masks_dilated.to(self.device),
         )
         if frame_extraction:
-            frames, flow_masks, masks_dilated = frames[:, 1::2], flow_masks[:, 1::2], masks_dilated[:, 1::2]
+            frames, flow_masks, masks_dilated = (
+                frames[:, 1::2],
+                flow_masks[:, 1::2],
+                masks_dilated[:, 1::2],
+            )
         ##############################################
         # ProPainter inference
         ##############################################
@@ -493,7 +497,7 @@ class ProInpainter:
                     # img0 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
                     #     i
                     # ] + ori_frames[idx] * (1 - binary_masks[i])
-                    
+
                     # if comp_frames[idx] is None:
                     #     comp_frames[idx] = img0
                     # else:
@@ -501,15 +505,15 @@ class ProInpainter:
                     #         comp_frames[idx].astype(np.float32) * 0.5
                     #         + img0.astype(np.float32) * 0.5
                     #     )
-                    
+
                     # comp_frames[idx] = comp_frames[idx].astype(np.uint8)
-                    
+
                     # frame extraction 2
                     if frame_extraction:
                         img1 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
                             i
                         ] + ori_frames[(idx * 2) + 1] * (1 - binary_masks[i])
-                        
+
                         if comp_frames[(idx * 2) + 1] is None:
                             comp_frames[(idx * 2) + 1] = img1
                         else:
@@ -517,13 +521,25 @@ class ProInpainter:
                                 comp_frames[(idx * 2) + 1].astype(np.float32) * 0.5
                                 + img1.astype(np.float32) * 0.5
                             )
-                        
-                        comp_frames[(idx * 2) + 1] = comp_frames[(idx * 2) + 1].astype(np.uint8)
-                        
-                        img0 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
-                            i
-                        ] + ori_frames[idx * 2] * (1 - binary_masks[i])
-                        
+
+                        comp_frames[(idx * 2) + 1] = comp_frames[(idx * 2) + 1].astype(
+                            np.uint8
+                        )
+
+                        binary_mask_dialte = np.expand_dims(
+                            cv2.dilate(
+                                binary_masks[i].squeeze(2).astype(np.float32),
+                                np.ones((50, 50), dtype=np.float32),
+                            ).astype(np.int8),
+                            2,
+                        )
+
+                        img0 = np.array(pred_img[i]).astype(
+                            np.uint8
+                        ) * binary_mask_dialte + ori_frames[idx * 2] * (
+                            1 - binary_mask_dialte
+                        )
+
                         if comp_frames[idx * 2] is None:
                             comp_frames[idx * 2] = img0
                         else:
@@ -535,7 +551,7 @@ class ProInpainter:
                         img0 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
                             i
                         ] + ori_frames[idx] * (1 - binary_masks[i])
-                        
+
                         if comp_frames[idx] is None:
                             comp_frames[idx] = img0
                         else:
@@ -543,14 +559,14 @@ class ProInpainter:
                                 comp_frames[idx].astype(np.float32) * 0.5
                                 + img0.astype(np.float32) * 0.5
                             )
-                        
+
                         comp_frames[idx] = comp_frames[idx].astype(np.uint8)
-                    
+
                     # frame extraction 3
                     # img2 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
                     #     i
                     # ] + ori_frames[(idx * 3) + 2] * (1 - binary_masks[i])
-                    
+
                     # if comp_frames[(idx * 3) + 2] is None:
                     #     comp_frames[(idx * 3) + 2] = img2
                     # else:
@@ -560,11 +576,11 @@ class ProInpainter:
                     #     )
 
                     # comp_frames[(idx * 3) + 2] = comp_frames[(idx * 3) + 2].astype(np.uint8)
-                    
+
                     # img0 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
                     #     i
                     # ] + ori_frames[idx * 3] * (1 - binary_masks[i])
-                    
+
                     # if comp_frames[idx * 3] is None:
                     #     comp_frames[idx * 3] = img0
                     # else:
@@ -574,11 +590,11 @@ class ProInpainter:
                     #     )
 
                     # comp_frames[idx * 3] = comp_frames[idx * 3].astype(np.uint8)
-                    
+
                     # img1 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
                     #     i
                     # ] + ori_frames[(idx * 3) + 1] * (1 - binary_masks[i])
-                    
+
                     # if comp_frames[(idx * 3) + 1] is None:
                     #     comp_frames[(idx * 3) + 1] = img1
                     # else:
@@ -588,12 +604,12 @@ class ProInpainter:
                     #     )
 
                     # comp_frames[(idx * 3) + 1] = comp_frames[(idx * 3) + 1].astype(np.uint8)
-                    
+
                     # frame extraction 4
                     # img3 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
                     #     i
                     # ] + ori_frames[(idx * 4) + 3] * (1 - binary_masks[i])
-                    
+
                     # if comp_frames[(idx * 4) + 3] is None:
                     #     comp_frames[(idx * 4) + 3] = img3
                     # else:
@@ -601,13 +617,13 @@ class ProInpainter:
                     #         comp_frames[(idx * 4) + 3].astype(np.float32) * 0.5
                     #         + img3.astype(np.float32) * 0.5
                     #     )
-                    
+
                     # comp_frames[(idx * 4) + 3] = comp_frames[(idx * 4) + 3].astype(np.uint8)
-                    
+
                     # img2 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
                     #     i
                     # ] + ori_frames[(idx * 4) + 2] * (1 - binary_masks[i])
-                    
+
                     # if comp_frames[(idx * 4) + 2] is None:
                     #     comp_frames[(idx * 4) + 2] = img2
                     # else:
@@ -615,13 +631,13 @@ class ProInpainter:
                     #         comp_frames[(idx * 4) + 2].astype(np.float32) * 0.5
                     #         + img2.astype(np.float32) * 0.5
                     #     )
-                    
+
                     # comp_frames[(idx * 4) + 2] = comp_frames[(idx * 4) + 2].astype(np.uint8)
-                    
+
                     # img1 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
                     #     i
                     # ] + ori_frames[(idx * 4) + 1] * (1 - binary_masks[i])
-                    
+
                     # if comp_frames[(idx * 4) + 1] is None:
                     #     comp_frames[(idx * 4) + 1] = img1
                     # else:
@@ -629,13 +645,13 @@ class ProInpainter:
                     #         comp_frames[(idx * 4) + 1].astype(np.float32) * 0.5
                     #         + img1.astype(np.float32) * 0.5
                     #     )
-                    
+
                     # comp_frames[(idx * 4) + 1] = comp_frames[(idx * 4) + 1].astype(np.uint8)
-                    
+
                     # img0 = np.array(pred_img[i]).astype(np.uint8) * binary_masks[
                     #     i
                     # ] + ori_frames[idx * 4] * (1 - binary_masks[i])
-                    
+
                     # if comp_frames[idx * 4] is None:
                     #     comp_frames[idx * 4] = img0
                     # else:
@@ -643,7 +659,7 @@ class ProInpainter:
                     #         comp_frames[idx * 4].astype(np.float32) * 0.5
                     #         + img0.astype(np.float32) * 0.5
                     #     )
-                    
+
                     # comp_frames[idx * 4] = comp_frames[idx * 4].astype(np.uint8)
 
             torch.cuda.empty_cache()

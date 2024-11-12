@@ -547,7 +547,7 @@ class InpaintGenerator(BaseNetwork):
             print("Pretrained ProPainter has loaded...")
             ckpt = torch.load(model_path, map_location="cpu")
             self.load_state_dict(ckpt, strict=False)
-        
+
         # print network parameter number
         self.print_network()
 
