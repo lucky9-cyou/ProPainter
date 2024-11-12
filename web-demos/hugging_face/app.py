@@ -35,7 +35,9 @@ def parse_augment():
     if not args.device:
         args.device = str(get_device())
 
-    return args 
+    return args
+
+args = parse_augment()
 
 # convert points input to prompt state
 def get_prompt(click_state, click_input):
@@ -74,8 +76,8 @@ def get_frames_from_video(video_input, video_state):
         fps = cap.get(cv2.CAP_PROP_FPS)
         length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-        if length >= 500:
-            operation_log = [("You uploaded a video with more than 500 frames. Stop the video extraction. Kindly lower the video frame rate to a value below 500. We highly recommend deploying the demo locally for long video processing.", "Error")]
+        if length >= 1000:
+            operation_log = [("You uploaded a video with more than 1000 frames. Stop the video extraction. Kindly lower the video frame rate to a value below 500. We highly recommend deploying the demo locally for long video processing.", "Error")]
             ret, frame = cap.read()
             if ret == True:
                 original_h, original_w = frame.shape[:2]
@@ -310,7 +312,7 @@ def vos_tracking_video(video_state, interactive_state, mask_dropdown):
     return video_output, video_state, interactive_state, operation_log, operation_log
 
 # inpaint 
-def inpaint_video(video_state, resize_ratio_number, dilate_radius_number, raft_iter_number, subvideo_length_number, neighbor_length_number, ref_stride_number, mask_dropdown, args):
+def inpaint_video(video_state, resize_ratio_number, dilate_radius_number, raft_iter_number, subvideo_length_number, neighbor_length_number, ref_stride_number, mask_dropdown):
     operation_log = [("",""), ("Inpainting finished!","Normal")]
 
     frames = np.asarray(video_state["origin_images"])
@@ -391,7 +393,6 @@ def restart():
 
 
 # args, defined in track_anything.py
-args = parse_augment()
 pretrain_model_url = 'https://github.com/sczhou/ProPainter/releases/download/v0.1.0/'
 sam_checkpoint_url_dict = {
     'vit_h': "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth",
