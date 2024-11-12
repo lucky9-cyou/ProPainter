@@ -30,6 +30,7 @@ def parse_augment():
     parser.add_argument('--port', type=int, default=8000, help="only useful when running gradio applications")  
     parser.add_argument('--mask_save', default=False)
     parser.add_argument('--frame_extraction', action="store_true", default=False)
+    parser.add_argument('--frame_limit', type=int, default=1000, help="The limitation of frame number")
     args = parser.parse_args()
     
     if not args.device:
@@ -76,7 +77,7 @@ def get_frames_from_video(video_input, video_state):
         fps = cap.get(cv2.CAP_PROP_FPS)
         length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-        if length >= 1000:
+        if length >= args.frame_limit:
             operation_log = [("You uploaded a video with more than 1000 frames. Stop the video extraction. Kindly lower the video frame rate to a value below 500. We highly recommend deploying the demo locally for long video processing.", "Error")]
             ret, frame = cap.read()
             if ret == True:
