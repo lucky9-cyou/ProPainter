@@ -106,10 +106,15 @@ def get_frames_from_video(video_input, video_state):
             ret, frame = cap.read()
             if ret == True:
                 original_h, original_w = frame.shape[:2]
-                scale_factor = min(1, 1280 / max(original_h, original_w))
+                scale_factor = max(1, 184 / min(original_h, original_w))
                 target_h, target_w = int(original_h * scale_factor), int(
                     original_w * scale_factor
                 )
+                if target_h % 2 != 0:
+                    target_h += 1
+                if target_w % 2 != 0:
+                    target_w += 1
+
                 frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
             status_ok = False
         else:
@@ -118,10 +123,15 @@ def get_frames_from_video(video_input, video_state):
                 if ret == True:
                     # resize input image
                     original_h, original_w = frame.shape[:2]
-                    scale_factor = min(1, 1280 / max(original_h, original_w))
+                    scale_factor = max(1, 184 / min(original_h, original_w))
                     target_h, target_w = int(original_h * scale_factor), int(
                         original_w * scale_factor
                     )
+                    if target_h % 2 != 0:
+                        target_h += 1
+                    if target_w % 2 != 0:
+                        target_w += 1
+                        
                     if scale_factor != 1:
                         frame = cv2.resize(frame, (target_w, target_h))
                     frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
@@ -536,6 +546,7 @@ def inpaint_video(
     ref_stride_number,
     mask_dropdown,
 ):
+    inpaint_time_start = time.time_ns()
     operation_log = [("", ""), ("Inpainting finished!", "Normal")]
 
     frames = np.asarray(video_state["origin_images"])
@@ -574,6 +585,10 @@ def inpaint_video(
         output_path="./result/inpaint/{}".format(video_state["video_name"]),
         fps=fps,
     )  # import video_input to name the output video
+    inpaint_time_end = time.time_ns()
+    print(
+        f"Inpaint time: {(inpaint_time_end - inpaint_time_start) / 1e6} ms"
+    )
 
     return video_output, operation_log, operation_log
 
@@ -858,7 +873,7 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=css) as iface:
             with gr.Column(scale=2):
                 template_frame = gr.Image(
                     type="pil",
-                    interactive=True,
+                    interactive=False,
                     elem_id="template_frame",
                     visible=False,
                     elem_classes="image",

@@ -260,7 +260,6 @@ class ProInpainter:
         # elif len(frames_inp) % 4 == 3:
         #     frames = frames[:-3]
         #     frames_inp = frames_inp[:-3]
-
         frames = to_tensors()(frames).unsqueeze(0) * 2 - 1
         flow_masks = to_tensors()(flow_masks).unsqueeze(0)
         masks_dilated = to_tensors()(masks_dilated).unsqueeze(0)
