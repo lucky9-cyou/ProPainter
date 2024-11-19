@@ -174,8 +174,6 @@ def get_frames_from_video(video_input, video_state):
         length,
         (original_w, original_h),
     )
-    model.samcontroler.sam_controler.reset_image()
-    model.samcontroler.sam_controler.set_image(video_state["origin_images"][0])
 
     inference_state = model.sam2controler.init_state(
         video_path=video_state["origin_images"]
@@ -449,6 +447,47 @@ def sam_refine_api(
     return painted_image, video_state, interactive_state, operation_log, operation_log
 
 
+def sam2_refine_api(
+    video_state, point_prompt, click_state, interactive_state, prompt_api
+):
+    # prompt for sam model
+    prompt = json.loads(prompt_api)
+
+    _, out_obj_ids, out_mask_logits = model.sam2controler.add_new_points_or_box(
+        inference_state=video_state["inference_state"],
+        frame_idx=video_state["select_frame_number"],
+        obj_id=0,
+        points=np.array(prompt["input_point"]),
+        labels=np.array(prompt["input_label"]),
+    )
+
+    mask, logit, painted_image = sam2_refine_click(
+        video_state["origin_images"][video_state["select_frame_number"]],
+        out_mask_logits,
+        np.array(prompt["input_point"]),
+        np.array(prompt["input_label"]),
+    )
+
+    video_state["masks"][video_state["select_frame_number"]] = mask
+    video_state["logits"][video_state["select_frame_number"]] = logit
+    video_state["painted_images"][video_state["select_frame_number"]] = painted_image
+
+    operation_log = [
+        ("[Must Do]", "Add mask"),
+        (": add the current displayed mask for video segmentation.\n", None),
+        ("[Optional]", "Remove mask"),
+        (": remove all added masks.\n", None),
+        ("[Optional]", "Clear clicks"),
+        (": clear current displayed mask.\n", None),
+        ("[Optional]", "Click image"),
+        (
+            ": Try to click the image shown in step2 if you want to generate more masks.\n",
+            None,
+        ),
+    ]
+    return painted_image, video_state, interactive_state, operation_log, operation_log
+
+
 def add_multi_mask(video_state, interactive_state, mask_dropdown):
     try:
         mask = video_state["masks"][video_state["select_frame_number"]]
@@ -588,7 +627,7 @@ def vos_tracking_video(video_state, interactive_state, mask_dropdown):
             contour_color=2,
             contour_width=5,
         )
-        
+
         video_masks.append(mask)
         video_logits.append(logit)
         video_painted_images.append(painted_image)
@@ -778,8 +817,8 @@ checkpoint_fodler = os.path.join("..", "..", "weights")
 sam_checkpoint = load_file_from_url(
     sam_checkpoint_url_dict[args.sam_model_type], checkpoint_fodler
 )
-sam2_checkpoint = os.path.join(checkpoint_fodler, "sam2.1_hiera_large.pt")
-sam2_config = "configs/sam2.1/sam2.1_hiera_l.yaml"
+sam2_checkpoint = os.path.join(checkpoint_fodler, "sam2.1_hiera_tiny.pt")
+sam2_config = "configs/sam2.1/sam2.1_hiera_t.yaml"
 cutie_checkpoint = load_file_from_url(
     os.path.join(pretrain_model_url, "cutie-base-mega.pth"), checkpoint_fodler
 )
@@ -1169,7 +1208,7 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=css) as iface:
     )
 
     api_btn.click(
-        fn=sam_refine_api,
+        fn=sam2_refine_api,
         inputs=[video_state, point_prompt, click_state, interactive_state, prompt_api],
         outputs=[
             template_frame,

@@ -20,6 +20,7 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
+
 def imwrite(img, file_path, params=None, auto_mkdir=True):
     if auto_mkdir:
         dir_name = os.path.abspath(os.path.dirname(file_path))
