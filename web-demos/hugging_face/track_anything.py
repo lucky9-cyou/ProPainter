@@ -4,12 +4,15 @@ from tqdm import tqdm
 from tools.interact_tools import SamControler
 from tracker.base_tracker import BaseTracker
 from inpainter.base_inpainter import ProInpainter
+from sam2.build_sam import build_sam2_video_predictor
 
 
 class TrackingAnything:
     def __init__(
         self,
         sam_checkpoint,
+        sam2_checkpoint,
+        sam2_config,
         cutie_checkpoint,
         propainter_checkpoint,
         raft_checkpoint,
@@ -21,6 +24,9 @@ class TrackingAnything:
             sam_checkpoint, args.sam_model_type, args.device
         )
         self.cutie = BaseTracker(cutie_checkpoint, device=args.device)
+        self.sam2controler = build_sam2_video_predictor(
+            sam2_config, sam2_checkpoint, args.device
+        )
         self.baseinpainter = ProInpainter(
             propainter_checkpoint,
             raft_checkpoint,

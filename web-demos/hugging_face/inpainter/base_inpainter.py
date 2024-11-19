@@ -15,15 +15,10 @@ from model.recurrent_flow_completion import RecurrentFlowCompleteNet
 from model.propainter import InpaintGenerator
 from core.utils import to_tensors
 import time
-import modelopt.torch.quantization as mtq
-import modelopt.torch.opt as mto
-import torch_tensorrt
 
 import warnings
 
 warnings.filterwarnings("ignore")
-import threading
-
 
 def imwrite(img, file_path, params=None, auto_mkdir=True):
     if auto_mkdir:
